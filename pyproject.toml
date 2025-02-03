@@ -9,7 +9,6 @@ description = "Fiber Reservoir Integrated Simulator"
 readme = "README.md"
 authors = [{ name = "Shenyao Jin", email = "shenyaojin@mines.edu" }]
 license = { file = "LICENSE" }
-homepage = "https://github.com/shenyaojin/fiberis"
 requires-python = ">=3.8"
 
 dependencies = [
@@ -30,4 +29,4 @@ docs = ["mkdocs", "mkdocs-material"]
 find = { where = ["src"] }
 
 [project.urls]
-Source = "https://github.com/shenyaojin/fibeRIS"
+Homepage = "https://github.com/shenyaojin/fibeRIS"
