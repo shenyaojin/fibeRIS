@@ -1,19 +1,12 @@
 # This script is to provide the utilities for 1D pressure diffusion problem
 # Developed by Shenyao Jin, shenyaojin@mines.edu
-import os
-import sys
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime
 from fiberis.simulator.optimizer import tso as tso
 from fiberis.simulator.solver import matbuilder
-from src.solver import matbuilder  # Load the matrix builder and PDE solver
-from src.solver import PDEsolver_IMP, PDESolver_EXP
-from src.pds.DSS_analyzer_Mariner import Data1D_GAUGE
-
+from fiberis.simulator.solver import PDESolver_EXP, PDESolver_IMP
+from fiberis.analyzer.Data1D import Data1D_GAUGE
 
 # Define the class for the 1D pressure diffusion problem; this class will only support single source term.
 # upgrade mesh that can support heterogeneous mesh.
@@ -300,12 +293,12 @@ class PDS1D_SingleSource:
             # Call the solver, get an updated snapshot
             if 'mode' in kwargs:
                 if kwargs['mode'] == 'implicit':
-                    snapshot_upd = PDEsolver_IMP.solver_implicit(A, b, solver='numpy')  # call the implicit solver
+                    snapshot_upd = PDESolver_IMP.solver_implicit(A, b, solver='numpy')  # call the implicit solver
                 else:
                     snapshot_upd = PDESolver_EXP.solver_explicit(A, b)  # call the explicit solver
             else:
                 # Default mode is implicit solver
-                snapshot_upd = PDEsolver_IMP.solver_implicit(A, b, solver='numpy')
+                snapshot_upd = PDESolver_IMP.solver_implicit(A, b, solver='numpy')
 
             # If no optimizer, append the snapshot to the list
             if not optimizer:
@@ -321,13 +314,13 @@ class PDS1D_SingleSource:
                 # Call the half step optimizer, then estimate the error
                 # Call the Matrix builder to get the matrix for the half step
                 A_half, b_half = matbuilder.matrix_builder_1d_single_source(self, time_parameter / 2)
-                snapshot_middle_tmp = PDEsolver_IMP.solver_implicit(A_half, b_half, solver='numpy')
+                snapshot_middle_tmp = PDESolver_IMP.solver_implicit(A_half, b_half, solver='numpy')
                 # Store this tmp snapshot to the list. Only snapshot is needed; t is not needed for half step.
                 self.snapshot.append(snapshot_middle_tmp)
 
                 # then call the matrix builder again to get the matrix for the full step
                 A_full, b_full = matbuilder.matrix_builder_1d_single_source(self, time_parameter / 2)
-                snapshot_full = PDEsolver_IMP.solver_implicit(A_full, b_full, solver='numpy')
+                snapshot_full = PDESolver_IMP.solver_implicit(A_full, b_full, solver='numpy')
                 # Delete the tmp snapshot
                 del self.snapshot[-1]
                 # Call the optimizer to 1. decide whether to accept the full step solution; 2. decide the next time
@@ -560,12 +553,12 @@ class PDS1D_MultiSource(PDS1D_SingleSource):
             # Call the solver, get an updated snapshot
             if 'mode' in kwargs:
                 if kwargs['mode'] == 'implicit':
-                    snapshot_upd = PDEsolver_IMP.solver_implicit(A, b, solver='numpy')
+                    snapshot_upd = PDESolver_IMP.solver_implicit(A, b, solver='numpy')
                 else:
                     snapshot_upd = PDESolver_EXP.solver_explicit(A, b)
             else:
                 # Default mode is implicit solver
-                snapshot_upd = PDEsolver_IMP.solver_implicit(A, b, solver='numpy')
+                snapshot_upd = PDESolver_IMP.solver_implicit(A, b, solver='numpy')
 
             # If no optimizer, append the snapshot to the list
             if not optimizer:
@@ -581,13 +574,13 @@ class PDS1D_MultiSource(PDS1D_SingleSource):
                 # Call the half step optimizer, then estimate the error
                 # Call the Matrix builder to get the matrix for the half step
                 A_half, b_half = matbuilder.matrix_builder_1d_multi_source(self, time_parameter / 2)
-                snapshot_middle_tmp = PDEsolver_IMP.solver_implicit(A_half, b_half, solver='numpy')
+                snapshot_middle_tmp = PDESolver_IMP.solver_implicit(A_half, b_half, solver='numpy')
                 # Store this tmp snapshot to the list. Only snapshot is needed; t is not needed for half step.
                 self.snapshot.append(snapshot_middle_tmp)
 
                 # then call the matrix builder again to get the matrix for the full step
                 A_full, b_full = matbuilder.matrix_builder_1d_multi_source(self, time_parameter / 2)
-                snapshot_full = PDEsolver_IMP.solver_implicit(A_full, b_full, solver='numpy')
+                snapshot_full = PDESolver_IMP.solver_implicit(A_full, b_full, solver='numpy')
                 # Delete the tmp snapshot
                 del self.snapshot[-1]
 
