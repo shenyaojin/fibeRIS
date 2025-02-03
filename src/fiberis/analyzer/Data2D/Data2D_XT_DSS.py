@@ -1,4 +1,4 @@
-from . import gjsignal
+from fiberis.analyzer.utils import signal_utils
 import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
@@ -159,7 +159,7 @@ class Data2D():
             dt = np.median(np.diff(self.taxis))
         if axis == 0:
             dt = np.median(np.diff(self.mds))
-        self.data = gjsignal.lpfilter(self.data, dt, corner_freq, order=order, axis=axis)
+        self.data = signal_utils.lpfilter(self.data, dt, corner_freq, order=order, axis=axis)
         self.history.append('lp_filter(corner_freq={},order={},axis={})'
                             .format(corner_freq, order, axis))
 
@@ -169,7 +169,7 @@ class Data2D():
         if axis == 0:
             dt = np.median(np.diff(self.mds))
         self.data *= tukey(self.data.shape[1], edge_taper).reshape((1, -1))
-        self.data = gjsignal.hpfilter(self.data, dt, corner_freq, order=order, axis=axis)
+        self.data = signal_utils.hpfilter(self.data, dt, corner_freq, order=order, axis=axis)
         self.history.append('hp_filter(corner_freq={},order={},axis={})'
                             .format(corner_freq, order, axis))
 
@@ -179,7 +179,7 @@ class Data2D():
         if axis == 0:
             dt = np.median(np.diff(self.mds))
         self.data *= tukey(self.data.shape[1], edge_taper).reshape((1, -1))
-        self.data = gjsignal.bpfilter(self.data, dt, lowf, highf, order=order, axis=axis)
+        self.data = signal_utils.bpfilter(self.data, dt, lowf, highf, order=order, axis=axis)
         self.history.append('bp_filter(lowf={},highf={},order={},axis={})'
                             .format(lowf, highf, order, axis))
 
