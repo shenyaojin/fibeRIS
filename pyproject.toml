@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fiberis"
+version = "0.1.0"
+description = "Fiber Reservoir Integrated Simulator"
+readme = "README.md"
+authors = [{ name = "Shenyao Jin", email = "shenyaojin@mines.edu" }]
+license = { file = "LICENSE" }
+homepage = "https://github.com/shenyaojin/fiberis"
+requires-python = ">=3.8"
+
+dependencies = [
+    "numpy~=1.26.4",
+    "matplotlib~=3.9.2",
+    "scipy~=1.13.1",
+    "pandas~=2.2.2",
+    "h5py~=3.11.0",
+    "plotly~=5.24.1",
+    "python-dateutil~=2.9.0post0"
+]
+
+[optional-dependencies]
+dev = ["pytest", "sphinx", "black", "flake8", "mypy"]
+docs = ["mkdocs", "mkdocs-material"]
+
+[tool.setuptools.packages]
+find = { where = ["src"] }
+
+[project.urls]
+Source = "https://github.com/shenyaojin/fibeRIS"
