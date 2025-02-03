@@ -63,7 +63,7 @@ def matrix_builder_1d_single_source(pds1d, dt):
 
     # Apply the source term
     # Get the source value from PG data
-    source_value = pds1d.source.get_value_by_time(pds1d.taxis[-1] - self.t0)
+    source_value = pds1d.source.get_value_by_time(pds1d.taxis[-1] - pds1d.t0)
     A[pds1d.sourceidx, :] = 0 # Initialize the row
     A[pds1d.sourceidx, pds1d.sourceidx] = 1
     b[pds1d.sourceidx] = source_value
@@ -134,7 +134,7 @@ def matrix_builder_1d_multi_source(pds1d, t):
     # Get the source value from PG data
     source_value_list = []
     for iter_pg_dataframe in pds1d.source:
-        source_value = iter_pg_dataframe.get_value_by_time(pds1d.taxis[-1] - self.t0)
+        source_value = iter_pg_dataframe.get_value_by_time(pds1d.taxis[-1] - pds1d.t0)
         source_value_list.append(source_value)
 
     flag = 0 # flag for the first source
