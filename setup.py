@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="fiberis",
-    version="0.1.0",
+    version="0.1.1",
     description="Fiber = Reservoir Integrated Simulator",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",

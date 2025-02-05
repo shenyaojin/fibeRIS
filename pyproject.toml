@@ -4,12 +4,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fiberis"
-version = "0.1.0"
+version = "0.1.1"
 description = "Fiber Reservoir Integrated Simulator"
 readme = "README.md"
 authors = [{ name = "Shenyao Jin", email = "shenyaojin@mines.edu" }]
 license = { file = "LICENSE" }
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 
 dependencies = [
     "numpy~=1.26.4",
@@ -18,7 +18,8 @@ dependencies = [
     "pandas~=2.2.2",
     "h5py~=3.11.0",
     "plotly~=5.24.1",
-    "python-dateutil~=2.9.0post0"
+    "python-dateutil~=2.9.0post0",
+    "importlib (>=1.0.4,<2.0.0)"
 ]
 
 [optional-dependencies]
