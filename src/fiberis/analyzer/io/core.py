@@ -1,22 +1,11 @@
 # This file contains the core class for data input/output.
-# Read data from different types of file(s)
-# Write data npz(or csv) to make it faster to read
+# Read data from different types of file(s).
+# Write data npz(or csv) to make it faster to read.
 
 import importlib
 import pkgutil
 import os
-
-# dynamically import all modules in the io package
-# package = 'fiberis.analyzer.io'
-# package_dir = os.path.dirname(__file__)
-# # filter the modules starting with "reader_"
-# modules = [name for _, name, _ in pkgutil.iter_modules([package_dir])]
-#
-# # import all modules in the io package
-# for module in modules:
-#     module_name = f'{package}.{module}'
-#     importlib.import_module(module_name)
-#     print(f'Imported {module_name}')
+import datetime
 
 class dataio():
 
@@ -25,10 +14,10 @@ class dataio():
         """
         Initialize the dataio object.
         """
-        pass
+        self._history = []
 
     @abstractmethod
-    def read(self, filename):
+    def read(self, **kwargs):
         """
         Read data from a file.
 
@@ -52,3 +41,15 @@ class dataio():
             The data to write.
         """
         pass
+
+    # History recording
+    def record_log(self, *args):
+        time_now = datetime.datetime.now()
+        # Concatenate all arguments
+        msg = " ".join(map(str, args)) + f" | Time: {time_now}"
+        # Append the formatted message to the history
+        self.history.append(msg)
+
+    def print_log(self):
+        for msg in self.history:
+            print(msg)
