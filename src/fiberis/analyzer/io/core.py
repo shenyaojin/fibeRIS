@@ -6,8 +6,10 @@ import importlib
 import pkgutil
 import os
 import datetime
+from abc import abstractmethod
 
-class dataio():
+
+class DataIO:
 
     # constructor
     def __init__(self):

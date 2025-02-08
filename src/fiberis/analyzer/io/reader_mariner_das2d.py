@@ -1,5 +1,6 @@
 # Utils for OptaSense - Bakken Mariner - Low Frequency DAS data
 # Shenyao Jin, shenyaojin@mines.edu
+from abc import ABC
 
 import h5py
 import datetime
@@ -12,7 +13,7 @@ from dateutil import parser
 from fiberis.analyzer.io import core
 
 # need to add the self check function
-class mariner_das2d_io(core.dataio):
+class MarinerDAS2D(core.DataIO, ABC):
 
     def __init__(self):
         """
