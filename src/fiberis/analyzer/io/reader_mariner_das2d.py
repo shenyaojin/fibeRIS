@@ -11,6 +11,7 @@ from dateutil import parser
 
 from fiberis.analyzer.io import core
 
+# need to add the self check function
 class mariner_das2d_io(core.dataio):
 
     def __init__(self):
