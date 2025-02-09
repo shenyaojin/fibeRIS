@@ -52,6 +52,7 @@ def gen_discrete_time_series(s=100, **kwargs):
     if filename is not None:
         np.savez(filename, taxis=t, data=x,
                  start_time=start_time)  # Save time axis, data, and start time in .npz format
+        print("File save successful: {}".format(filename))
 
     # Return the generated time series data and metadata
     return t, x, start_time
