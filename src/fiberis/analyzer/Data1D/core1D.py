@@ -181,7 +181,7 @@ class Data1D:
 
         self.name = new_name.strip()
 
-    def plot(self, ax=None, start=None, end=None):
+    def plot(self, ax=None, start=None, end=None, title=None, **kwargs):
         """
         Plot the data on a specified axis within a time range.
 
@@ -193,6 +193,10 @@ class Data1D:
             The start time for the plot. If None, plotting starts from the beginning.
         end : float or datetime.datetime, optional
             The end time for the plot. If None, plotting ends at the last data point.
+        title : str or None, optional
+            The title for the plot. If None, no title is set. If not provided, defaults to the instance's name.
+        kwargs : dict
+            Additional keyword arguments to pass to the `plot` function.
         """
         if start is not None and end is not None:
             self.crop(start, end)
@@ -208,11 +212,21 @@ class Data1D:
             fig, ax = plt.subplots(figsize=(10, 5))
             new_figure_created = True
 
-        ax.plot(time_axis, self.data, label=self.name or 'Data')
+        ax.plot(time_axis, self.data, label=self.name or 'Data', **kwargs)
         ax.set_xlabel('Time')
         ax.set_ylabel('Value')
-        ax.set_title('{}'.format(self.name or 'Data'))
-        ax.legend()
+
+        # Set the title based on the input parameter
+        if title is not None:
+            ax.set_title(title)
+        elif self.name:
+            ax.set_title(self.name)
+
+        # Ensure the legend updates properly by adding a check for existing handles
+        handles, labels = ax.get_legend_handles_labels()
+        if not handles or self.name not in labels:
+            ax.legend()
+
         ax.grid(True)
 
         # Only show the plot if a new figure was created
