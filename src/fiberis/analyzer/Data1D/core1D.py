@@ -225,7 +225,7 @@ class Data1D:
         # Ensure the legend updates properly by adding a check for existing handles
         handles, labels = ax.get_legend_handles_labels()
         if not handles or self.name not in labels:
-            ax.legend()
+            ax.legend(loc='best', fontsize='medium')
 
         ax.grid(True)
 
