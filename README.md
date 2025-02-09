@@ -1,4 +1,4 @@
 # fibeRIS
 Fiber=Reservoir Integrated Simulaor
 
-Still under development.
+Still under development...
