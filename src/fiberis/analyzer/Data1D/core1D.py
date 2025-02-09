@@ -45,11 +45,15 @@ class Data1D:
         data_structure = np.load(filename, allow_pickle=True)
         self.data = data_structure['data']
         self.taxis = data_structure['taxis']
-
-        # Convert start_time to datetime if it's a numpy type
+        # Handle start_time correctly if it's an array or numpy type
         start_time_raw = data_structure['start_time']
+        if isinstance(start_time_raw, np.ndarray) and start_time_raw.size == 1:
+            start_time_raw = start_time_raw.item()
+
         if isinstance(start_time_raw, np.datetime64):
             self.start_time = start_time_raw.astype('M8[ms]').astype(datetime.datetime)
+        elif isinstance(start_time_raw, str):
+            self.start_time = datetime.datetime.fromisoformat(start_time_raw)
         else:
             self.start_time = start_time_raw
 
