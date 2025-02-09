@@ -1,4 +1,10 @@
 # fibeRIS
 Fiber=Reservoir Integrated Simulaor
 
-Still under development...
+# Installation
+
+Use editable mode to install the package for it's still under development.
+
+```bash
+pip install -e .
+```

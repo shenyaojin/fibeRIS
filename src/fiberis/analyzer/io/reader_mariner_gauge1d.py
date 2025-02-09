@@ -28,8 +28,7 @@ class MarinerGauge1D(core.DataIO, ABC):
         :param filename: the filename of the npz file
         :return: None
         """
-        filename = os.path.basename(filename)
-        data_structure = np.load(filename)
+        data_structure = np.load(filename, allow_pickle=True)
         self.data = data_structure['value']
 
         taxis_tmp = data_structure['datetime']
