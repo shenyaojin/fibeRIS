@@ -221,8 +221,6 @@ class Data1D:
         # Set the title based on the input parameter
         if title is not None:
             ax.set_title(title)
-        elif self.name:
-            ax.set_title(self.name)
 
         # Explicitly request the legend to display
         ax.legend(loc='best', fontsize='medium')
