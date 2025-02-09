@@ -212,7 +212,9 @@ class Data1D:
             fig, ax = plt.subplots(figsize=(10, 5))
             new_figure_created = True
 
-        ax.plot(time_axis, self.data, label=self.name or 'Data', **kwargs)
+        # Ensure that a unique label is always set for the legend
+        plot_label = self.name if self.name else 'Data'
+        ax.plot(time_axis, self.data, label=plot_label, **kwargs)
         ax.set_xlabel('Time')
         ax.set_ylabel('Value')
 
@@ -222,11 +224,8 @@ class Data1D:
         elif self.name:
             ax.set_title(self.name)
 
-        # Ensure the legend updates properly by adding a check for existing handles
-        handles, labels = ax.get_legend_handles_labels()
-        if not handles or self.name not in labels:
-            ax.legend(loc='best', fontsize='medium')
-
+        # Explicitly request the legend to display
+        ax.legend(loc='best', fontsize='medium')
         ax.grid(True)
 
         # Only show the plot if a new figure was created
