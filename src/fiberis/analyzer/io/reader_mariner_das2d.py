@@ -24,56 +24,6 @@ class MarinerDAS2D(core.DataIO, ABC):
         self.data = None
         self.start_time = None
 
-    # Set the data manually
-
-    def set_daxis(self, daxis):
-        """
-        Set the daxis of the data.
-
-        Parameters:
-        ----------
-        daxis : numpy.ndarray
-            The daxis of the data.
-        """
-        self.daxis = daxis
-        self.record_log(f'daxis is set.')
-
-    def set_taxis(self, taxis):
-        """
-        Set the taxis of the data.
-
-        Parameters:
-        ----------
-        taxis : numpy.ndarray
-            The taxis of the data.
-        """
-        self.taxis = taxis
-        self.record_log(f'taxis is set.')
-
-    def set_data(self, data):
-        """
-        Set the data.
-
-        Parameters:
-        ----------
-        data : numpy.ndarray
-            The data.
-        """
-        self.data = data
-        self.record_log(f'data is set.')
-
-    def set_start_time(self, start_time):
-        """
-        Set the start time of the data.
-
-        Parameters:
-        ----------
-        start_time : datetime.datetime
-            The start time of the data.
-        """
-        self.start_time = start_time
-        self.record_log(f'start_time is set.')
-
     def self_check(self):
         """
         Check if the data is correctly set.
