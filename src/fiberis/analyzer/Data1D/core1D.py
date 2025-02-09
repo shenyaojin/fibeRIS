@@ -202,8 +202,11 @@ class Data1D:
         else:
             time_axis = self.taxis
 
+        # Create a new figure and axis if ax is not provided
+        new_figure_created = False
         if ax is None:
             fig, ax = plt.subplots(figsize=(10, 5))
+            new_figure_created = True
 
         ax.plot(time_axis, self.data, label=self.name or 'Data')
         ax.set_xlabel('Time')
@@ -212,5 +215,6 @@ class Data1D:
         ax.legend()
         ax.grid(True)
 
-        if ax.get_figure():
+        # Only show the plot if a new figure was created
+        if new_figure_created:
             plt.show()
