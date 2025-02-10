@@ -59,7 +59,7 @@ class MarinerPP1D(core.DataIO):
         # Save each label's data to a separate npz file
         for i, lbl in enumerate(self.label):
             # Construct the filename for this label
-            label_filename = f"{filename}_{lbl}.npz"
+            label_filename = f"{filename}{lbl}.npz"
 
             # Extract the data for the current label
             data_for_label = self.data[i]
