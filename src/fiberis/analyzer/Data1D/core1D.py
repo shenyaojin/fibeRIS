@@ -113,13 +113,13 @@ class Data1D:
             The time shift to apply.
         """
         if isinstance(shift, datetime.timedelta):
-            shift_seconds = shift.total_seconds()
-        elif isinstance(shift, (int, float)):
             shift_seconds = shift
+        elif isinstance(shift, (int, float)):
+            shift_seconds = datetime.timedelta(seconds=shift)
         else:
             raise TypeError("Shift must be either a timedelta or a float representing seconds.")
 
-        self.taxis = self.taxis + shift_seconds
+        self.start_time += shift_seconds
 
     def get_value_by_time(self, time):
         """
