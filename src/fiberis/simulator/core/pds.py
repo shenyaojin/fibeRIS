@@ -245,7 +245,7 @@ class PDS1D_SingleSource:
                 self.history.append("Time array generated using t_total.")
             else:
                 dt = kwargs['dt']
-                t_total = (self.source.calculate_time())[-1] * 3600 + self.t0  # get the last time from the source term
+                t_total = (self.source.calculate_time())[-1] + self.t0  # get the last time from the source term
                 print("Time array generated using the source term.")
                 self.history.append("Time array generated using the source term.")
             # Initialize the snapshot
@@ -259,7 +259,7 @@ class PDS1D_SingleSource:
                 t_total = kwargs['t_total']
                 print("Time array generated using t_total.")
             else:
-                t_total = (self.source.calculate_time())[-1] * 3600 + self.t0
+                t_total = (self.source.calculate_time())[-1] + self.t0
                 print("Time array generated using the source term.")
 
             # Initialize the snapshot
@@ -443,7 +443,7 @@ class PDS1D_MultiSource(PDS1D_SingleSource):
 
         # check the type of each source term, should be a DataFrame
         for source_iter in self.source:
-            if not isinstance(source_iter, Data1D_GAUGE.Data1D_GAUGE):
+            if not isinstance(source_iter, Data1D_GAUGE.Data1DGAUGE):
                 datatype = type(source_iter)
                 return False, f"Each source term must be a mariner DataFrame. But got {datatype}."
 
@@ -503,7 +503,7 @@ class PDS1D_MultiSource(PDS1D_SingleSource):
                 print("Time array generated using t_total.")
             else:
                 dt = kwargs['dt']
-                t_total = (self.source[0].calculate_time())[-1] * 3600 + self.t0
+                t_total = (self.source[0].calculate_time())[-1] + self.t0
                 print("Time array generated using the source term.")
             # Initialize the snapshot
             self.snapshot = []
@@ -516,7 +516,7 @@ class PDS1D_MultiSource(PDS1D_SingleSource):
                 t_total = kwargs['t_total']
                 print("Time array generated using t_total.")
             else:
-                t_total = (self.source[0].calculate_time())[-1] * 3600 + self.t0
+                t_total = (self.source[0].calculate_time())[-1] + self.t0
                 print("Time array generated using the source term.")
 
             # Initialize the snapshot
