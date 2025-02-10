@@ -443,7 +443,7 @@ class PDS1D_MultiSource(PDS1D_SingleSource):
 
         # check the type of each source term, should be a DataFrame
         for source_iter in self.source:
-            if not isinstance(source_iter, Data1D_Gauge.Data1DGauge):
+            if not isinstance(source_iter, fiberis.analyzer.Data1D_Gauge.Data1DGauge):
                 datatype = type(source_iter)
                 return False, f"Each source term must be a mariner DataFrame. But got {datatype}."
 
