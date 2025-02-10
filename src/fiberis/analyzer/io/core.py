@@ -2,14 +2,11 @@
 # Read data from different types of file(s).
 # Write data npz(or csv) to make it faster to read.
 
-import importlib
-import pkgutil
-import os
 import datetime
-from abc import abstractmethod
+from abc import abstractmethod, ABC
 
 
-class DataIO:
+class DataIO(ABC):
 
     # constructor
     def __init__(self):

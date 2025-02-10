@@ -6,12 +6,10 @@ from itertools import starmap
 
 import numpy as np
 from fiberis.analyzer.io import core
-from abc import ABC
-import os
 import datetime
 
 
-class MarinerGauge1D(core.DataIO, ABC):
+class MarinerGauge1D(core.DataIO):
 
     def __init__(self):
         """
