@@ -6,7 +6,7 @@ from datetime import datetime
 from fiberis.simulator.optimizer import tso as tso
 from fiberis.simulator.solver import matbuilder
 from fiberis.simulator.solver import PDESolver_EXP, PDESolver_IMP
-from fiberis.analyzer.Data1D import Data1D_GAUGE
+from fiberis.analyzer.Data1D import Data1D_Gauge
 
 # Define the class for the 1D pressure diffusion problem; this class will only support single source term.
 # upgrade mesh that can support heterogeneous mesh.
@@ -443,7 +443,7 @@ class PDS1D_MultiSource(PDS1D_SingleSource):
 
         # check the type of each source term, should be a DataFrame
         for source_iter in self.source:
-            if not isinstance(source_iter, Data1D_GAUGE.Data1DGAUGE):
+            if not isinstance(source_iter, Data1D_Gauge.Data1DGauge):
                 datatype = type(source_iter)
                 return False, f"Each source term must be a mariner DataFrame. But got {datatype}."
 
