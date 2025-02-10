@@ -441,11 +441,11 @@ class PDS1D_MultiSource(PDS1D_SingleSource):
         if not isinstance(self.source, list):
             return False, "Source term must be a list."
 
-        # check the type of each source term, should be a DataFrame
-        for source_iter in self.source:
-            if not isinstance(source_iter, fiberis.analyzer.Data1D_Gauge.Data1DGauge):
-                datatype = type(source_iter)
-                return False, f"Each source term must be a mariner DataFrame. But got {datatype}."
+        # check the type of each source term, should be a DataFrame. Remove this check.
+        # for source_iter in self.source:
+        #     if not isinstance(source_iter, fiberis.analyzer.Data1D_Gauge.Data1DGauge):
+        #         datatype = type(source_iter)
+        #         return False, f"Each source term must be a mariner DataFrame. But got {datatype}."
 
 
         # Check the max time of the source term list, are they the same?
