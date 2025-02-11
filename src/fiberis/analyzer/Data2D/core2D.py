@@ -165,7 +165,7 @@ class Data2D():
         self.taxis = self.taxis[time_mask]
         self.start_time += datetime.timedelta(seconds=start)
 
-        self.shift(-start)
+        self.taxis -= start
         self.record_log("Time range selected:", start, end)
 
     # Data selection by depth range with cropping functionality

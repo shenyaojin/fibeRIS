@@ -101,7 +101,7 @@ class Data1D:
         # Update the start time based on the start of the cropped data
         self.start_time = self.start_time + datetime.timedelta(seconds=start_seconds)
         # shift the time axis to start from 0
-        self.shift(-start_seconds)
+        self.taxis -= start_seconds
 
     def shift(self, shift):
         """
