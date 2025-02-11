@@ -279,16 +279,19 @@ class Data2D():
         **kwargs : dict
             Additional keyword arguments for the matplotlib plotting function (e.g., cmap, extent).
 
+        Returns:
+        --------
+        matplotlib.image.AxesImage or matplotlib.collections.QuadMesh
+            The image object for further manipulation (e.g., updating clim).
+
         Usage:
         ------
         >>> instance = DSS2D()
         >>> fig, ax = plt.subplots()
-        >>> instance.plot(ax=ax, method='pcolormesh', useTimeStamp=True, cmap='viridis')
+        >>> img = instance.plot(ax=ax, method='pcolormesh', useTimeStamp=True, cmap='viridis')
+        >>> img.set_clim(-10, 10)  # Dynamically update the color limits
         >>> plt.show()
         """
-        import matplotlib.pyplot as plt
-        import matplotlib.dates as mdates
-        import datetime
 
         # Remove and handle 'aspect' separately
         aspect = kwargs.pop('aspect', None)
@@ -301,13 +304,14 @@ class Data2D():
         if ax is None:
             fig, ax = plt.subplots()
 
+        # Create the plot based on the selected method
         if method == 'imshow':
             img = ax.imshow(self.data, *args, extent=[timestamps[0], timestamps[-1], self.daxis[-1], self.daxis[0]],
                             **kwargs)
         elif method == 'pcolormesh':
             img = ax.pcolormesh(timestamps, self.daxis, self.data, *args, **kwargs)
 
-        # Set axis labels, colorbar, and handle timestamp formatting if needed
+        # Set axis labels and handle timestamp formatting
         ax.set_xlabel('Time')
         ax.set_ylabel('Depth')
         if useTimeStamp:
@@ -324,6 +328,8 @@ class Data2D():
         # Display the plot if no axis was provided
         if ax is None:
             plt.show()
+
+        return img
 
     def shift(self, shift):
         """
