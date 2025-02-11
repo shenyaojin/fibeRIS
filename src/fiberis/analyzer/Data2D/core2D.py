@@ -290,6 +290,9 @@ class Data2D():
         import matplotlib.dates as mdates
         import datetime
 
+        # Remove and handle 'aspect' separately
+        aspect = kwargs.pop('aspect', None)
+
         if useTimeStamp:
             timestamps = [self.start_time + datetime.timedelta(seconds=t) for t in self.taxis]
         else:
@@ -309,7 +312,11 @@ class Data2D():
         ax.set_ylabel('Depth')
         if useTimeStamp:
             ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M:%S'))
-            fig.autofmt_xdate()
+            ax.figure.autofmt_xdate()
+
+        # Apply aspect setting if provided
+        if aspect is not None:
+            ax.set_aspect(aspect)
 
         # Add colorbar
         plt.colorbar(img, ax=ax, label='Amplitude')
