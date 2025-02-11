@@ -230,29 +230,6 @@ class Data2D():
         """
         return deepcopy(self)
 
-    def rename(self, new_name):
-        """
-        Rename the data instance.
-
-        Parameters:
-        ----------
-        new_name : str
-            The new name for the data instance.
-
-        Raises:
-        -------
-        TypeError
-            If the new name is not a string.
-        ValueError
-            If the new name is an empty string.
-        """
-        if not isinstance(new_name, str):
-            raise TypeError("The new name must be a string.")
-        if not new_name.strip():
-            raise ValueError("The new name cannot be empty or whitespace only.")
-
-        self.name = new_name.strip()
-
     # msg system
     # History recording
     def record_log(self, *args):
@@ -309,6 +286,9 @@ class Data2D():
         >>> instance.plot(ax=ax, method='pcolormesh', useTimeStamp=True, cmap='viridis')
         >>> plt.show()
         """
+        import matplotlib.pyplot as plt
+        import matplotlib.dates as mdates
+        import datetime
 
         if useTimeStamp:
             timestamps = [self.start_time + datetime.timedelta(seconds=t) for t in self.taxis]
@@ -316,26 +296,27 @@ class Data2D():
             timestamps = self.taxis
 
         if ax is None:
-            plt.figure()
-            if method == 'imshow':
-                plt.imshow(self.data, *args, extent=[timestamps[0], timestamps[-1], self.daxis[-1], self.daxis[0]], **kwargs)
-            elif method == 'pcolormesh':
-                plt.pcolormesh(timestamps, self.daxis, self.data, *args, **kwargs)
-            plt.colorbar(label='Amplitude')
-            plt.xlabel('Time')
-            plt.ylabel('Depth')
-            if useTimeStamp:
-                plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M:%S'))
-                plt.gcf().autofmt_xdate()
+            fig, ax = plt.subplots()
+
+        if method == 'imshow':
+            img = ax.imshow(self.data, *args, extent=[timestamps[0], timestamps[-1], self.daxis[-1], self.daxis[0]],
+                            **kwargs)
+        elif method == 'pcolormesh':
+            img = ax.pcolormesh(timestamps, self.daxis, self.data, *args, **kwargs)
+
+        # Set axis labels, colorbar, and handle timestamp formatting if needed
+        ax.set_xlabel('Time')
+        ax.set_ylabel('Depth')
+        if useTimeStamp:
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M:%S'))
+            fig.autofmt_xdate()
+
+        # Add colorbar
+        plt.colorbar(img, ax=ax, label='Amplitude')
+
+        # Display the plot if no axis was provided
+        if ax is None:
             plt.show()
-        else:
-            if method == 'imshow':
-                ax.imshow(self.data, *args, extent=[timestamps[0], timestamps[-1], self.daxis[-1], self.daxis[0]], **kwargs)
-            elif method == 'pcolormesh':
-                ax.pcolormesh(timestamps, self.daxis, self.data, *args, **kwargs)
-            if useTimeStamp:
-                ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M:%S'))
-                ax.figure.autofmt_xdate()
 
     def shift(self, shift):
         """
