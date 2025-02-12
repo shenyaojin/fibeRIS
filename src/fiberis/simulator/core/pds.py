@@ -410,7 +410,7 @@ class PDS1D_SingleSource:
             else:
                 start_time_saved = self.source.start_time
 
-            np.savez(filename, daxis=self.mesh, taxis=self.taxis, data=self.snapshot, start_time = start_time_saved)
+            np.savez(filename, daxis=self.mesh, taxis=self.taxis, data=self.snapshot.T, start_time = start_time_saved)
         else:
             raise ValueError("Mode must be 'fiberis' data format.")
 

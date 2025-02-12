@@ -373,7 +373,7 @@ class Data2D():
             raise ValueError("Depth axes do not match, merging not possible.")
 
         # Calculate end time of self
-        end_time_self = self.start_time + datetime.timedelta(seconds=self.taxis[-1])
+        end_time_self = self.start_time + datetime.timedelta(seconds=float(self.taxis[-1]))
 
         if data.start_time < end_time_self:
             raise ValueError(
@@ -389,3 +389,23 @@ class Data2D():
         self.data = np.concatenate((self.data, data.data), axis=1)
 
         self.record_log("Merged with", data.name, "at time", data.start_time)
+
+    def get_start_time(self):
+        """
+        :return the start time of the data
+        """
+        return self.start_time
+
+    def get_end_time(self, type='datetime'):
+        """
+
+        :param type: return type, datetime or seconds
+        :return: the end time of the data
+        """
+
+        if type == 'datetime':
+            return self.start_time + datetime.timedelta(seconds=float(self.taxis[-1]))
+        elif type == 'seconds':
+            return self.taxis[-1]
+        else:
+            raise ValueError("type input illegal.")
