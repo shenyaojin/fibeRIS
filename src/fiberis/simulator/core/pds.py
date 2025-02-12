@@ -399,14 +399,20 @@ class PDS1D_SingleSource:
     def pack_result(self, **kwargs):
         # Extract the filename from kwargs
         filename = kwargs.get('filename', 'result.npz')
-        mode = kwargs.get('mode', 'dss_analyzer_mariner')
+        mode = kwargs.get('mode', 'fiberis')
 
-        if mode == 'dss_analyzer_mariner':
+        if mode == 'fiberis':
             # Pack the result to npz, refer to my notes
             # (distance, time)
-            np.savez(filename, daxis=self.mesh, taxis=self.taxis, data=self.snapshot)
+            # Detect the source length
+            if isinstance(self.source, list):
+                start_time_saved = self.source[0].start_time
+            else:
+                start_time_saved = self.source.start_time
+
+            np.savez(filename, daxis=self.mesh, taxis=self.taxis, data=self.snapshot, start_time = start_time_saved)
         else:
-            raise ValueError("Mode must be 'dss_analyzer_mariner'.")
+            raise ValueError("Mode must be 'fiberis' data format.")
 
     def reset(self):
         """

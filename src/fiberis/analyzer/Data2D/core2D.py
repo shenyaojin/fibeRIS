@@ -107,7 +107,7 @@ class Data2D():
         """
         self.name = "_".join(args)
 
-    def read_npz(self, filename):
+    def load_npz(self, filename):
 
         if filename[-4:] != ".npz":
             filename += ".npz"
@@ -348,3 +348,40 @@ class Data2D():
             raise TypeError("Shift must be either a timedelta or a float representing seconds.")
 
         self.start_time += shift_seconds
+
+    def right_merge(self, data):
+        """
+        Merge another Data2D instance to the right along the time axis.
+
+        Parameters:
+        ----------
+        data : Data2D (or subclass)
+            The Data2D-compatible instance to merge with the current instance.
+
+        Raises:
+        -------
+        ValueError
+            If the depth axes do not match.
+            If the start_time of `data` is earlier than the end time of `self`.
+
+        """
+        if not np.array_equal(self.daxis, data.daxis):
+            raise ValueError("Depth axes do not match, merging not possible.")
+
+        # Calculate end time of self
+        end_time_self = self.start_time + datetime.timedelta(seconds=self.taxis[-1])
+
+        if data.start_time < end_time_self:
+            raise ValueError(
+                f"Cannot merge: start_time of new data ({data.start_time}) "
+                f"is earlier than the end time of existing data ({end_time_self})."
+            )
+
+        # Calculate the right shift for the new data
+        taxis_shifted = data.taxis + (data.start_time - self.start_time).total_seconds()
+
+        # concatenate the data
+        self.taxis = np.concatenate((self.taxis, taxis_shifted))
+        self.data = np.concatenate((self.data, data.data), axis=1)
+
+        self.record_log("Merged with", data.name, "at time", data.start_time)
