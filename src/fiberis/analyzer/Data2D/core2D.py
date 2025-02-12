@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import datetime
 from copy import deepcopy, copy
 import matplotlib.dates as mdates
+from matplotlib.ticker import MaxNLocator
 
 
 class Data2D():
@@ -262,7 +263,7 @@ class Data2D():
         for msg in self._history:
             print(msg)
 
-    def plot(self, ax=None, method='imshow', useTimeStamp=False, *args, **kwargs):
+    def plot(self, ax=None, method='imshow', useTimeStamp=False, xaxis_rotation=0, xtickN=4, *args, **kwargs):
         """
         Plot the data using the specified method. Optionally, use real timestamps for the x-axis.
 
@@ -315,15 +316,18 @@ class Data2D():
         ax.set_xlabel('Time')
         ax.set_ylabel('Depth')
         if useTimeStamp:
-            ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M:%S'))
-            ax.figure.autofmt_xdate()
+            formatter = mdates.DateFormatter('%m-%d %H:%M')
+            ax.xaxis.set_major_formatter(formatter)
+            ax.xaxis.set_major_locator(MaxNLocator(xtickN))
+            ax.tick_params(axis='x', labelrotation=xaxis_rotation)
+            ax.xaxis_date()
 
         # Apply aspect setting if provided
         if aspect is not None:
             ax.set_aspect(aspect)
 
-        # Add colorbar
-        plt.colorbar(img, ax=ax, label='Amplitude')
+        # Add colorbar. Uncomment this. I think it is better to leave it to the user.
+        # plt.colorbar(img, ax=ax, label='Amplitude')
 
         # Display the plot if no axis was provided
         if ax is None:

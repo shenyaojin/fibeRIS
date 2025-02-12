@@ -185,27 +185,9 @@ class Data1D:
 
         self.name = new_name.strip()
 
-    def plot(self, ax=None, start=None, end=None, title=None, **kwargs):
-        """
-        Plot the data on a specified axis within a time range.
+    def plot(self, ax=None, title=None, useTimeStamp=False, useLegend=False, **kwargs):
 
-        Parameters:
-        ----------
-        ax : matplotlib.axes.Axes, optional
-            The axis to plot on. If None, a new figure and axis are created.
-        start : float or datetime.datetime, optional
-            The start time for the plot. If None, plotting starts from the beginning.
-        end : float or datetime.datetime, optional
-            The end time for the plot. If None, plotting ends at the last data point.
-        title : str or None, optional
-            The title for the plot. If None, no title is set. If not provided, defaults to the instance's name.
-        kwargs : dict
-            Additional keyword arguments to pass to the `plot` function.
-        """
-        if start is not None and end is not None:
-            self.crop(start, end)
-
-        if self.start_time is not None:
+        if useTimeStamp:
             time_axis = self.calculate_time()
         else:
             time_axis = self.taxis
@@ -218,7 +200,7 @@ class Data1D:
 
         # Ensure that a unique label is always set for the legend
         plot_label = self.name if self.name else 'Data'
-        ax.plot(time_axis, self.data, label=plot_label, **kwargs)
+        img = ax.plot(time_axis, self.data, label=plot_label, **kwargs)
         ax.set_xlabel('Time')
         ax.set_ylabel('Value')
 
@@ -227,9 +209,45 @@ class Data1D:
             ax.set_title(title)
 
         # Explicitly request the legend to display
-        ax.legend(loc='best', fontsize='medium')
-        ax.grid(True)
+        if useLegend:
+            ax.legend(loc='best', fontsize='medium')
 
         # Only show the plot if a new figure was created
         if new_figure_created:
             plt.show()
+
+        return img
+
+    def right_merge(self, data):
+        """
+        Merge another Data1D instance to the right along the time axis.
+
+        Parameters:
+        ----------
+        data : Data1D (or subclass)
+            The Data1D-compatible instance to merge with the current instance.
+
+        Raises:
+        -------
+        ValueError
+            If the start_time of `data` is earlier than the end time of `self`.
+
+        """
+        # Calculate end time
+        end_time_self = self.start_time + datetime.timedelta(seconds=float(self.taxis[-1]))
+
+        if data.start_time < end_time_self:
+            raise ValueError(
+                f"Cannot merge: start_time of new data ({data.start_time}) "
+                f"is earlier than the end time of existing data ({end_time_self})."
+            )
+
+        # Calculate the shifted time
+        taxis_shifted = data.taxis + (data.start_time - self.start_time).total_seconds()
+
+        # Concatenate the time axis
+        self.taxis = np.concatenate((self.taxis, taxis_shifted))
+        self.data = np.concatenate((self.data, data.data))
+
+        # Logging the message
+        print(f"Merged with {data.name} at time {data.start_time}")
