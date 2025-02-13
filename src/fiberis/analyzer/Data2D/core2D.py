@@ -409,3 +409,18 @@ class Data2D():
             return self.taxis[-1]
         else:
             raise ValueError("type input illegal.")
+
+    def calculate_time(self):
+        """
+        Calculate the datetime values from the time axis.
+
+        Returns:
+        --------
+        new_taxis : ndarray of datetime.datetime
+            The time axis converted to datetime format.
+        """
+        if self.start_time is None:
+            raise ValueError("start_time is not set.")
+
+        new_taxis = np.array([self.start_time + datetime.timedelta(seconds=t) for t in self.taxis])
+        return new_taxis
