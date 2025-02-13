@@ -1,5 +1,5 @@
 # Using new lib compared to 101l
-# Run in Lakota.
+# Run in Lakora
 # Shenyao Jin, 02112025
 #%%
 import numpy as np
@@ -75,7 +75,7 @@ gauge_md_datapath = f"data/legacy/h_well/geometry/gauge_md_hwell.npz"
 gauge_md = np.load(gauge_md_datapath)
 gauge_md = gauge_md['data']
 # filter out the gauge md
-ind =ind = np.array(np.where(np.logical_and(gauge_md <=  np.max(frac_hit_stg7) + 500, gauge_md >= np.min(frac_hit_stg8) - 500))).flatten()
+ind = np.array(np.where(np.logical_and(gauge_md <=  np.max(frac_hit_stg7) + 500, gauge_md >= np.min(frac_hit_stg8) - 500))).flatten()
 
 gauge_dataframe_all = []
 for iter in tqdm(ind):
