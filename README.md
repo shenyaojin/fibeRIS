@@ -1,5 +1,7 @@
 # fibeRIS
-Fiber=Reservoir Integrated Simulaor
+DFOS analyzer/simulator designed for reservoir engineering. 
+
+I'll finish this MD file to illustrate what this package can do in the future
 
 # Installation
 
