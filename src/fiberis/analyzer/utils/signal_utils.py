@@ -1,11 +1,11 @@
-from scipy.signal import butter, lfilter, filtfilt, freqz
-from scipy.interpolate import interp1d
-import numpy as np
-import matplotlib.pyplot as plt
-from datetime import datetime
-from datetime import timedelta
-from scipy.stats.stats import pearsonr
 import sys
+from datetime import datetime
+
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy.interpolate import interp1d
+from scipy.signal import butter, filtfilt
+from scipy.stats.stats import pearsonr
 
 
 def butter_bandpass(lowcut, highcut, fs, order=2):

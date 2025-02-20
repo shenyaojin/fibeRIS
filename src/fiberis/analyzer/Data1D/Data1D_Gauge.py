@@ -10,4 +10,8 @@ from fiberis.analyzer.Data1D import core1D
 
 # define an object to store the data
 class Data1DGauge(core1D.Data1D):
-    pass
+
+
+    def calculate_pressure_dropdown(self, start_time=None, end_time=None):
+        # Use GPT to implement the code later.
+        return 0
