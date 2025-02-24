@@ -3,7 +3,9 @@ import numpy as np
 # Should use core.pds to get the correct type of data
 
 # Must use the pds object to get the data
-def matrix_builder_1d_single_source(pds1d, dt):
+def matrix_builder_1d_single_source(pds1d, dt,
+                                    pml_thickness = 10.0,
+                                    sigma_max = 2):
     """
     Build the matrix for the 1D diffusion problem with a single source term.
     Args:
@@ -42,7 +44,7 @@ def matrix_builder_1d_single_source(pds1d, dt):
     # Fill the vector b, should be the snapshot of the previous time step. Use copy to avoid the reference
     b = pds1d.snapshot[-1].copy()
 
-    # Apply the boundary conditions
+    # Apply the boundary conditions.
     # Scan the left boundary
     if pds1d.lbc == 'Dirichlet':
         A[0, 0] = 1 # No need to initialize for the for loop above
@@ -68,10 +70,18 @@ def matrix_builder_1d_single_source(pds1d, dt):
     A[pds1d.sourceidx, pds1d.sourceidx] = 1
     b[pds1d.sourceidx] = source_value
 
+    # 4. PML attenuation
+    sigma_array = build_pml_sigma(pds1d.mesh, pml_thickness, sigma_max)  # PML
+    for i in range(nx):
+        A[i, i] += dt * sigma_array[i]
+
     return A, b
 
 # Multiple sources
-def matrix_builder_1d_multi_source(pds1d, t):
+def matrix_builder_1d_multi_source(pds1d, dt,
+                                   pml_thickness=0.0,
+                                   sigma_max=10
+                                   ):
     """
     Build the matrix for the 1D diffusion problem with multiple source terms.
     Args:
@@ -91,8 +101,8 @@ def matrix_builder_1d_multi_source(pds1d, t):
     dxm = dx[:-1] # dxm is an array of length nx-2
     dxp = dx[1:] # dxp is an array of length nx-2
 
-    alpha_l = diffusivity_eff[:-1] * t / (dxm * (dxm + dxp) / 2) # alpha is an array of length nx-1
-    alpha_r = diffusivity_eff[1:]  * t / (dxp * (dxm + dxp) / 2) # alpha is an array of length nx-1
+    alpha_l = diffusivity_eff[:-1] * dt / (dxm * (dxm + dxp) / 2) # alpha is an array of length nx-1
+    alpha_r = diffusivity_eff[1:]  * dt / (dxp * (dxm + dxp) / 2) # alpha is an array of length nx-1
 
     nx = len(pds1d.mesh)
 
@@ -145,4 +155,37 @@ def matrix_builder_1d_multi_source(pds1d, t):
             source_value_list)[flag]
         flag += 1
 
+    sigma_array = build_pml_sigma(pds1d.mesh, pml_thickness, sigma_max)  # PML
+    for i in range(nx):
+        A[i, i] += dt * sigma_array[i]
+
     return A, b
+
+# PML builder
+def build_pml_sigma(mesh, pml_thickness, sigma_max):
+    """
+    Build the PML sigma array
+    """
+    x_min, x_max = mesh[0], mesh[-1]
+    nx = len(mesh)
+    sigma_array = np.zeros(nx)
+
+    for i in range(nx):
+        x_i = mesh[i]
+        # Distance to left
+        dist_left = x_i - x_min
+        # Distance to right
+        dist_right = x_max - x_i
+
+        # Left PML
+        if dist_left < pml_thickness:
+            # 线性增长 0 ~ sigma_max
+            ratio = (pml_thickness - dist_left) / pml_thickness
+            sigma_array[i] = sigma_max * ratio
+
+        # Right PML
+        if dist_right < pml_thickness:
+            ratio = (pml_thickness - dist_right) / pml_thickness
+            sigma_array[i] = max(sigma_array[i], sigma_max * ratio)
+
+    return sigma_array
