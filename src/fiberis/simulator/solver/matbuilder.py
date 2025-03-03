@@ -62,6 +62,9 @@ def matrix_builder_1d_single_source(pds1d, dt,
         A[-1, -1] = -1
         A[-1, -2] = 1
         b[-1] = 0
+    else: 
+        # go ahead
+        pass
 
     # Apply the source term
     # Get the source value from PG data

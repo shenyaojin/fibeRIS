@@ -132,7 +132,7 @@ class PDS1D_SingleSource:
         """
         if self.lbc is None or self.rbc is None:
             return False, "Boundary condition(s) (lbc/rbc) not set."
-        allowed_bc = ['Dirichlet', 'Neumann']
+        allowed_bc = ['Dirichlet', 'Neumann', 'None']
         if self.lbc not in allowed_bc:
             return False, f"Invalid left BC: {self.lbc}. Must be {allowed_bc}."
         if self.rbc not in allowed_bc:
