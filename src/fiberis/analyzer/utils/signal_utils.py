@@ -1,12 +1,14 @@
 import sys
-from datetime import datetime
+import datetime
 
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.interpolate import interp1d
 from scipy.signal import butter, filtfilt
 from scipy.stats.stats import pearsonr
+from dateutil.parser import parse
 
+# Signal processing tools created by Dr.Ge Jin.
 
 def butter_bandpass(lowcut, highcut, fs, order=2):
     nyq = 0.5 * fs
@@ -85,21 +87,6 @@ def timediff(ts1, ts2):
     else:
         return tdiff.seconds
 
-
-def diffplot(data1, data2, crange=(-1, 1)):
-    plt.figure(figsize=(10, 8))
-    plt.subplot(1, 3, 1)
-    plt.imshow(data1, aspect='auto')
-    plt.clim(crange)
-    plt.subplot(1, 3, 2)
-    plt.imshow(data2, aspect='auto')
-    plt.clim(crange)
-    plt.subplot(1, 3, 3)
-    plt.imshow(data1 - data2, aspect='auto')
-    plt.clim(crange)
-    plt.show()
-
-
 def get_interp_mat(anchor_N, N, kind='quadratic'):
     x = np.arange(N)
     anchor_x = np.linspace(x[0], x[-1], anchor_N)
@@ -144,7 +131,7 @@ def rms(a, axis=None):
 
 
 def matdatenum_to_pydatetime(matlab_datenum):
-    python_datetime = datetime.fromordinal(int(matlab_datenum)) + timedelta(days=matlab_datenum % 1) - timedelta(
+    python_datetime = datetime.datetime.fromordinal(int(matlab_datenum)) + timedelta(days=matlab_datenum % 1) - timedelta(
         days=366)
     return python_datetime
 
@@ -201,27 +188,6 @@ def running_average(data, N):
         outdata[-i] = np.mean(data[-i - halfN:])
     return outdata
 
-
-def degC_to_degK(C):
-    return C - 273.15
-
-
-def degC_to_degF(C):
-    return C * 9 / 5 + 32
-
-
-def degF_to_degC(C):
-    return (C - 32) * 5 / 9
-
-
-def degK_to_degF(K):
-    return K * 9 / 5 - 459.67
-
-
-def degF_to_degK(F):
-    return (F + 459.67) * 5 / 9
-
-
 def print_progress(n):
     sys.stdout.write("\r" + str(n))
     sys.stdout.flush()
@@ -232,35 +198,13 @@ def phase_wrap(data):
     return phase
 
 
-def dist_3D(x, y, z, x1, y1, z1):
-    r = ((x - x1) ** 2 + (y - y1) ** 2 + (z - z1) ** 2) ** 0.5
-    return r
-
-
-def dummy_fun():
-    print('hello world')
-
-
-def robust_polyfit(x, y, order=1, errtol=2):
-    para = np.polyfit(x, y, order)
-    errs = np.abs(y - np.polyval(para, x))
-    err_threshold = np.std(errs) * errtol
-    goodind = errs < err_threshold
-    para = np.polyfit(x[goodind], y[goodind], order)
-    return para
-
-
-from dateutil.parser import parse
-from datetime import timedelta
-
-
 def fetch_timestamp_fast(timestamp_strs, downsampling=100):
     x = np.arange(len(timestamp_strs))
     x_sparse = list(map(int, np.round(np.linspace(0, x[-1], len(x) // downsampling))))
     ts_sparse = np.array(list(map(parse, timestamp_strs[x_sparse])))
     t_sparse = np.array([(t - ts_sparse[0]).total_seconds() for t in ts_sparse])
     t = np.interp(x, x_sparse, t_sparse)
-    ts = [(ts_sparse[0] + timedelta(seconds=dt)) for dt in t]
+    ts = [(ts_sparse[0] + datetime.timedelta(seconds=dt)) for dt in t]
     return ts, t
 
 
