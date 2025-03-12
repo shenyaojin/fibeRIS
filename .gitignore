@@ -178,6 +178,7 @@ cython_debug/
 
 # Pycharm
 .idea/
+*-pycharm-support-libs/
 
 # test files
 testfile/

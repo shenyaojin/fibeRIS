@@ -64,3 +64,5 @@ class Data1DPumpingCurve(core1D.Data1D):
                 return self.taxis[end_index]
         else:
             raise ValueError("start_time is not set in the data.")
+    
+    

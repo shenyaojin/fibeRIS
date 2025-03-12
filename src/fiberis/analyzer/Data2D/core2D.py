@@ -424,3 +424,53 @@ class Data2D():
 
         new_taxis = np.array([self.start_time + datetime.timedelta(seconds=t) for t in self.taxis])
         return new_taxis
+
+    def calculate_time_seconds(self):
+        """
+        Calculate the seconds values from the time axis.
+        """
+        return self.taxis
+    
+    def apply_lowpass_filter(self, cutoff_freq, sample_rate=None, order=5):
+        """
+        Apply a low-pass filter to the data using the bpfilter function.
+
+        Parameters:
+        ----------
+        cutoff_freq : float
+            The cutoff frequency for the low-pass filter
+        sample_rate : float, optional
+            The sample rate of the data. If None, will be calculated from time axis
+        order : int, optional
+            The order of the filter (default is 5)
+
+        Returns:
+        --------
+        None
+            Modifies the data in place
+        """
+        if sample_rate is None:
+            # Calculate sample rate from time axis if not provided
+            if len(self.taxis) > 1:
+                dt = np.mean(np.diff(self.taxis))
+                sample_rate = 1 / dt
+            else:
+                raise ValueError("Cannot calculate sample rate from single time point")
+        else:
+            dt = 1 / sample_rate
+
+        # Apply low-pass filter to each row of data using bpfilter
+        filtered_data = np.zeros_like(self.data)
+        for i in range(self.data.shape[0]):
+            filtered_data[i] = signal_utils.bpfilter(
+                self.data[i],
+                dt,
+                lowcut=0,  # Set low cutoff to 0 for low-pass behavior
+                highcut=cutoff_freq,
+                order=order,
+                axis=-1
+            )
+
+        # Update data and record operation
+        self.data = filtered_data
+        self.record_log(f"Applied low-pass filter: cutoff={cutoff_freq}Hz, order={order}")

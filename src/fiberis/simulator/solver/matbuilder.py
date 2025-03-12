@@ -4,7 +4,7 @@ import numpy as np
 
 # Must use the pds object to get the data
 def matrix_builder_1d_single_source(pds1d, dt,
-                                    pml_thickness = 10.0,
+                                    pml_thickness = 0.0,
                                     sigma_max = 2):
     """
     Build the matrix for the 1D diffusion problem with a single source term.
@@ -53,6 +53,8 @@ def matrix_builder_1d_single_source(pds1d, dt,
         A[0, 0] = -1
         A[0, 1] = 1
         b[0] = 0
+    else:
+        pass
 
     # Scan the right boundary
     if pds1d.rbc == 'Dirichlet':
@@ -62,6 +64,9 @@ def matrix_builder_1d_single_source(pds1d, dt,
         A[-1, -1] = -1
         A[-1, -2] = 1
         b[-1] = 0
+    else: 
+        # go ahead
+        pass
 
     # Apply the source term
     # Get the source value from PG data
@@ -179,7 +184,7 @@ def build_pml_sigma(mesh, pml_thickness, sigma_max):
 
         # Left PML
         if dist_left < pml_thickness:
-            # 线性增长 0 ~ sigma_max
+            # 0 ~ sigma_max
             ratio = (pml_thickness - dist_left) / pml_thickness
             sigma_array[i] = sigma_max * ratio
 
