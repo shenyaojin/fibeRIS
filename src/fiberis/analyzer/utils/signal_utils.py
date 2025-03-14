@@ -8,7 +8,7 @@ from scipy.signal import butter, filtfilt
 from scipy.stats.stats import pearsonr
 from dateutil.parser import parse
 
-# Signal processing tools created by Dr.Ge Jin.
+# Dr.Jin's functions. will try to remove some of the scipy dependencies in the future.
 
 def butter_bandpass(lowcut, highcut, fs, order=2):
     nyq = 0.5 * fs
