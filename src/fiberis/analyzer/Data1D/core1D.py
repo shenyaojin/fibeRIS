@@ -6,7 +6,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import datetime
 from copy import deepcopy
-
+from fiberis.analyzer.utils import signal_utils, history_utils
 
 class Data1D:
     """
@@ -31,6 +31,7 @@ class Data1D:
         self.start_time = None
 
         self.name = None
+        self.history = history_utils.InfoManagementSystem()
 
     def load_npz(self, filename):
         """
@@ -251,3 +252,44 @@ class Data1D:
 
         # Logging the message
         print(f"Merged with {data.name} at time {data.start_time}")
+
+
+    # Signal processing
+    # Remove abnormal data
+    def remove_abnormal_data(self, threshold=300, method='mean'):
+        """
+        Remove abnormal data points caused by device error.
+
+        :param threshold: Pressure difference threshold to determine abnormal data.
+        :param method: Method to replace abnormal data ('mean' or 'interp').
+        :return: Cleaned data array.
+        """
+
+        # Check if data is empty
+        if self.data is None or len(self.data) == 0:
+            raise ValueError("Data is empty. Cannot remove abnormal data.")
+
+        # Compute first-order difference
+        diff_val = signal_utils.samediff(self.data)
+
+        # Identify abnormal data points: points with large diff on both sides
+        abnormal_idx = np.where((np.abs(diff_val[:-1]) > threshold) &
+                                (np.abs(diff_val[1:]) > threshold))[0] + 1
+
+        if len(abnormal_idx) == 0:
+            return
+
+        # Choose method to replace abnormal points
+        clean_data = self.data.copy()
+
+        if method == 'mean':
+            for idx in abnormal_idx:
+                if 0 < idx < len(self.data) - 1:  # BC
+                    clean_data[idx] = (self.data[idx - 1] + self.data[idx + 1]) / 2
+
+        elif method == 'interp':
+            valid_idx = np.setdiff1d(np.arange(len(self.data)), abnormal_idx)
+            clean_data[abnormal_idx] = np.interp(abnormal_idx, valid_idx, self.data[valid_idx])
+
+        self.data = clean_data
+        self.history.add_record("abnormal data removed")

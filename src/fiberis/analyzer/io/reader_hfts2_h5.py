@@ -26,3 +26,7 @@ class HFTS2DAS2D(core.DataIO):
         for file in files:
             raw_data, raw_data_time = io_utils.read_h5(file)
             # Write it to tmp npz file, then combine them
+
+
+    def write(self, filename, *args): # TBD
+        pass
