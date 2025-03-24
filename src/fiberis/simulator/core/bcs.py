@@ -1,4 +1,4 @@
-# This script defined the boundary conditions for PDS simulator
+# This script defined the boundary conditions for PDS simulator1d
 # Shenyao Jin, 02/18/2025
 from io import RawIOBase
 
