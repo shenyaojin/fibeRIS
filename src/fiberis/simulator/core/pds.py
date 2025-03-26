@@ -57,8 +57,8 @@ class PDS1D_SingleSource:
         if isinstance(diffusivity, (int, float)):  # Check if diffusivity is a single number
             self.diffusivity = np.full(len(self.mesh), diffusivity)
             print("Diffusivity is a single scalar value, broadcasted to the mesh length.")
-        elif isinstance(diffusivity, (list, np.ndarray)) and len(diffusivity) == len(
-                self.mesh):  # Check for proper length
+        elif (isinstance(diffusivity, (list, np.ndarray))
+              and len(diffusivity) == len(self.mesh)):  # Check for proper length
             self.diffusivity = np.array(diffusivity)
         else:
             raise ValueError(
