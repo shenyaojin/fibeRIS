@@ -474,3 +474,17 @@ class Data2D():
         # Update data and record operation
         self.data = filtered_data
         self.record_log(f"Applied low-pass filter: cutoff={cutoff_freq}Hz, order={order}")
+
+    def get_value_by_depth(self, depth):
+        """
+        Get the value of a single channel at a specific depth.
+        :return: 1D array. Have same length as the time axis.
+        """
+
+        # Do check for the depth
+        if depth < self.daxis[0] or depth > self.daxis[-1]:
+            raise ValueError(f"Depth out of range; {depth} not in {self.daxis[0]} to {self.daxis[-1]}")
+
+        # Find the index of the depth
+        depth_idx = np.argmax(np.abs(self.daxis - depth))
+        return self.data[depth_idx]

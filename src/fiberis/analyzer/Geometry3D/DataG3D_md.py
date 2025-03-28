@@ -9,3 +9,6 @@ class G3DMeasuredDepth(coreG3D.DataG3D):
 
     def plot_loc(self):
         pass
+
+    def get_spatial_coor(self, md):
+        pass
