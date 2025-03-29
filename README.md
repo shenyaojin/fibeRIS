@@ -23,3 +23,7 @@ All the datasets are recognized as ref axis(`xaxis`, `taxis`, ...) and data(keyn
 - [ ] Add 3D IO and processing
 - [ ] Implement more signal processing methods in 2D
 - [ ] Rewrite the simulation part -> There is a fatal bug in 1D single source simulator. Need to fix it ASAP!!!
+
+# License 
+
+This project is under WTFPL – Do What the Fuck You Want to Public License.
