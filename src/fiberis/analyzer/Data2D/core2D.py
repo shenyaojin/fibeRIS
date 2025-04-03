@@ -486,5 +486,5 @@ class Data2D():
             raise ValueError(f"Depth out of range; {depth} not in {self.daxis[0]} to {self.daxis[-1]}")
 
         # Find the index of the depth
-        depth_idx = np.argmax(np.abs(self.daxis - depth))
+        depth_idx = np.argmin(np.abs(self.daxis - depth))
         return self.data[depth_idx]
