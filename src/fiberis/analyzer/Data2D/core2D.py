@@ -287,11 +287,13 @@ class Data2D():
 
         Usage:
         ------
-        >>> instance = DSS2D()
-        >>> fig, ax = plt.subplots()
-        >>> img = instance.plot(ax=ax, method='pcolormesh', useTimeStamp=True, cmap='viridis')
-        >>> img.set_clim(-10, 10)  # Dynamically update the color limits
-        >>> plt.show()
+        fig, ax = plt.subplots(figsize=(4, 6))
+        cx = np.array([-1, 1])
+        img1 = DASdata.plot(ax=ax, useTimeStamp=False, cmap='bwr', aspect='auto')
+        img1.set_clim(cx * 1000)
+        # Set title
+        ax.set_title("LF-DAS data")
+        plt.show()
         """
 
         # Remove and handle 'aspect' separately

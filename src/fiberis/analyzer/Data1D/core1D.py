@@ -104,6 +104,9 @@ class Data1D:
         # shift the time axis to start from 0
         self.taxis -= start_seconds
 
+    # Set alias for crop method
+    select_time = crop
+
     def shift(self, shift):
         """
         Apply a time shift to the data.
