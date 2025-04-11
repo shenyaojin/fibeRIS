@@ -296,3 +296,32 @@ class Data1D:
 
         self.data = clean_data
         self.history.add_record("abnormal data removed")
+
+    # Interpolate data to new axis
+    def interpolate(self, new_taxis, start_time=None):
+        """
+        Interpolate the data to a new time axis.
+
+        :param new_taxis: New time axis for interpolation.
+        :return: This method will change the dataframe itself. Be sure to make a copy if needed.
+        """
+        if self.data is None or len(self.data) == 0 or new_taxis[0] != 0:
+            raise ValueError("Data is empty. Cannot interpolate.")
+
+        # Check if new_taxis is in datetime format
+        if isinstance(new_taxis, datetime.datetime):
+            new_taxis = np.array([new_taxis])
+
+        # Ensure new_taxis is a numpy array
+        if not isinstance(new_taxis, np.ndarray):
+            new_taxis = np.array(new_taxis)
+
+        # Interpolate data to new time axis
+        interpolated_data = np.interp(new_taxis, self.taxis, self.data)
+
+        # Update the data, time axis and start time
+        self.data = interpolated_data
+        self.taxis = new_taxis
+        # Detect the start time: datetime.datetime
+        if isinstance(start_time, datetime.datetime):
+            self.start_time = start_time

@@ -160,6 +160,8 @@ class Data2D():
         if start > end:
             raise ValueError("Start time must be less than or equal to end time.")
 
+        self.taxis = np.array(self.taxis)
+
         # Find the indices within the range and crop data
         time_mask = (self.taxis >= start) & (self.taxis <= end)
         self.data = self.data[:, time_mask]
@@ -190,6 +192,8 @@ class Data2D():
 
         if start > end:
             raise ValueError("Start depth must be less than or equal to end depth.")
+
+        self.daxis = np.array(self.daxis)
 
         # Find the indices within the range and crop data
         depth_mask = (self.daxis >= start) & (self.daxis <= end)
