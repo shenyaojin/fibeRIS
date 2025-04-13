@@ -1,5 +1,6 @@
 # fibeRIS
-DFOS analyzer/simulator designed for reservoir engineering. 
+DFOS analyzer/simulator designed for reservoir engineering. Designed for my personal projects. Focusing on multi-dimension 
+datasets interaction.
 
 I'll finish this MD file to illustrate what this package can do in the future.
 
