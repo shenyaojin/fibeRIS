@@ -1,12 +1,14 @@
 # This script is to provide the utilities for 1D pressure diffusion problem
 # Developed by Shenyao Jin, shenyaojin@mines.edu
-import numpy as np
-import matplotlib.pyplot as plt
 from datetime import datetime
+
+import matplotlib.pyplot as plt
+import numpy as np
+
 from fiberis.simulator.optimizer import tso as tso
-from fiberis.simulator.solver import matbuilder
 from fiberis.simulator.solver import PDESolver_EXP, PDESolver_IMP
-from fiberis.analyzer.Data1D import Data1D_Gauge
+from fiberis.simulator.solver import matbuilder
+
 
 # Define the class for the 1D pressure diffusion problem; this class will only support single source term.
 # upgrade mesh that can support heterogeneous mesh.

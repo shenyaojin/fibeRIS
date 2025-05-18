@@ -1,7 +1,6 @@
-import numpy as np
-from fiberis.analyzer.io import reader_mariner_gauge1d
-import numpy as np
-import os, glob
+from fiberis.io import reader_mariner_gauge1d
+import os
+
 # Shows the IO functions of fiberis - how do/should they work
 
 # Load the path

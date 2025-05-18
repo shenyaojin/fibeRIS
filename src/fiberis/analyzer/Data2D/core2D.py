@@ -1,4 +1,4 @@
-from fiberis.analyzer.utils import signal_utils
+from fiberis.utils import signal_utils
 import numpy as np
 import matplotlib.pyplot as plt
 import datetime

@@ -2,11 +2,10 @@
 # Shenyao Jin, shenyaojin@mines.edu, 02/06/2025
 
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 import datetime
 from copy import deepcopy
-from fiberis.analyzer.utils import signal_utils, history_utils
+from fiberis.utils import signal_utils, history_utils
 
 class Data1D:
     """

@@ -2,8 +2,8 @@
 # Purpose: Read MOOSE .i input files and store them in fibeRIS data format.
 # Shenyao Jin, 05/13/2025
 
-import numpy as np
-from fiberis.analyzer.io import core
+from fiberis.io import core
+
 
 class MOOSEIFileReader(core.DataIO):
 

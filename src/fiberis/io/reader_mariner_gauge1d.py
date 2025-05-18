@@ -2,11 +2,9 @@
 # Shenyao Jin
 # I have already packed the data into .npz files, so the .read function is simply reading the
 # data from those .npz files.
-from itertools import starmap
 
 import numpy as np
-from fiberis.analyzer.io import core
-import datetime
+from fiberis.io import core
 
 
 class MarinerGauge1D(core.DataIO):

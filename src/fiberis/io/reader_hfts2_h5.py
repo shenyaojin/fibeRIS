@@ -1,14 +1,13 @@
 # Utils for reading HFTS2 data from h5 files
 # Shenyao Jin, adopted from Peiyao Li, Ge Jin's codes
 
-import h5py
-import datetime
 import numpy as np
 from glob import glob
-from fiberis.analyzer.utils import io_utils
+from fiberis.utils import io_utils
 from dateutil import parser
 
-from fiberis.analyzer.io import core
+from fiberis.io import core
+
 
 # Need to self check function in core.py
 

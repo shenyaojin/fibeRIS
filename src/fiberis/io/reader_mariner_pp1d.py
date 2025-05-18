@@ -4,8 +4,7 @@
 # data from those .npz files.
 
 import numpy as np
-from fiberis.analyzer.io import core
-import datetime
+from fiberis.io import core
 
 
 class MarinerPP1D(core.DataIO):

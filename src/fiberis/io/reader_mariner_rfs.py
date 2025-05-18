@@ -1,15 +1,9 @@
 # Utils for XOM - Bakken Mariner - DSS-RFS data
 # Shenyao Jin, shenyaojin@mines.edu
 
-from abc import ABC
-import h5py
-import datetime
-import pandas as pd
-
 import numpy as np
-from tqdm import tqdm
-from dateutil import parser
-from fiberis.analyzer.io import core
+from fiberis.io import core
+
 
 class Mariner2DRFS2D(core.DataIO):
 

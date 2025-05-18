@@ -1,9 +1,7 @@
 # This script defined the boundary conditions for PDS simulator1d
 # Shenyao Jin, 02/18/2025
-from io import RawIOBase
 
 import numpy as np
-from keyring import set_keyring
 
 
 class BoundaryCondition:

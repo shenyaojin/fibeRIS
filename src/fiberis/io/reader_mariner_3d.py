@@ -4,7 +4,8 @@
 # Write geometry 3D data.
 
 import numpy as np
-from fiberis.analyzer.io import core
+from fiberis.io import core
+
 
 class Mariner3D(core.DataIO):
 
