@@ -1,33 +1,108 @@
+# Package metadata and build configuration for the fiberis.
+# Shenyao, 05/18/2025
 [build-system]
 requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "fiberis"
-version = "0.1.20"
+version = "0.1.20" # Version should be updated when releasing new changes
 description = "Fiber Reservoir Integrated Simulator"
 readme = "README.md"
 authors = [{ name = "Shenyao Jin", email = "shenyaojin@mines.edu" }]
-license = { file = "LICENSE" }
-requires-python = ">=3.9"
+license = { file = "LICENSE" } # Ensure LICENSE file exists at the root
+requires-python = ">=3.9" # Python 3.9 reaches end-of-life in October 2025. Consider future updates.
 
-dependencies = [
-    "numpy>=1.22",
-    "matplotlib>=3.5",
-    "scipy>=1.8",
-    "pandas>=1.5",
-    "h5py>=3.7",
-    "plotly>=5.10",
-    "python-dateutil>=2.8",
-    "importlib>=1.0.4,<2.0.0"
+# Classifiers help users find your project on PyPI.
+# Full list: https://pypi.org/classifiers/
+classifiers = [
+    "Development Status :: 3 - Alpha", # Or "4 - Beta" or "5 - Production/Stable"
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License", # Update if your license is different
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
-[optional-dependencies]
-dev = ["pytest", "sphinx", "black", "flake8", "mypy"]
-docs = ["mkdocs", "mkdocs-material"]
+# Keywords help users find your project.
+keywords = ["fiber optics", "reservoir simulation", "physics", "engineering", "numerical simulation"]
 
-[tool.setuptools.packages]
-find = { where = ["src"] }
+# Core dependencies required for the project to run.
+# Sorted alphabetically for better readability.
+dependencies = [
+    "h5py>=3.7,<4.0",
+    "matplotlib>=3.5,<4.0",
+    "numpy>=1.22,<2.0",      # NumPy 2.0 has significant changes, so <2.0 is a safe upper bound for now.
+    "pandas>=1.5,<3.0",      # Pandas 3.0 might introduce API changes.
+    "plotly>=5.10,<6.0",
+    "python-dateutil>=2.8,<3.0",
+    "scipy>=1.8,<2.0"
+]
+
+[project.optional-dependencies]
+# Dependencies for development (testing, linting, formatting, etc.)
+# Sorted alphabetically.
+dev = [
+    "black>=23.0",
+    "flake8>=6.0",
+    "mypy>=1.0",
+    "pytest>=7.0",
+    "sphinx>=6.0" # Sphinx is often used for API docs generation or more complex documentation needs.
+]
+
+# Dependencies for building documentation.
+# Sorted alphabetically.
+docs = [
+    "mkdocs-material>=9.0",
+    "mkdocs>=1.5"
+]
+
+# An 'all' extra can be useful for installing all optional dependencies.
+all = [
+    "fiberis[dev]",
+    "fiberis[docs]",
+]
 
 [project.urls]
 Homepage = "https://github.com/shenyaojin/fibeRIS"
+Repository = "https://github.com/shenyaojin/fibeRIS" # Or use "Source"
+Documentation = "https://github.com/shenyaojin/fibeRIS/tree/main/docs" # Update if you have a dedicated docs site
+Issues = "https://github.com/shenyaojin/fibeRIS/issues" # Or use "Bug Tracker"
+# Changelog = "https://github.com/shenyaojin/fibeRIS/blob/main/CHANGELOG.md" # If you maintain a changelog
+
+# Configuration for setuptools to find your packages.
+# Assumes your package 'fiberis' is located in the 'src' directory.
+[tool.setuptools.packages.find]
+where = ["src"]
+# You can add 'namespaces = false' if you are not using namespace packages.
+# namespaces = false
+# You can also explicitly list packages if preferred over find:
+# packages = ["fiberis"]
+
+# Example: Configuration for Black code formatter
+# [tool.black]
+# line-length = 88
+# target-version = ['py39', 'py310', 'py311', 'py312']
+
+# Example: Configuration for pytest
+# [tool.pytest.ini_options]
+# minversion = "7.0"
+# addopts = "-ra -q --cov=src/fiberis --cov-report=html"
+# testpaths = [
+#     "tests",
+# ]
+
+# Example: Configuration for MyPy
+# [tool.mypy]
+# python_version = "3.9"
+# warn_return_any = true
+# warn_unused_configs = true
+# ignore_missing_imports = true # Can be helpful initially
+# exclude = ['docs/'] # Exclude directories from type checking
