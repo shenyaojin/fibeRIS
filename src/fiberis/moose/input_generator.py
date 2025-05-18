@@ -139,7 +139,8 @@ def generate_moose_input(config: Dict[str, Any], output_filepath: str):
                 top_level_block.add_sub_block(sub_block_instance)
         else:
             raise TypeError(
-                f"Configuration for block '{block_name}' must be a dict (for parameters) or a list (for sub-blocks). Got: {type(block_data_config)}")
+                f"Configuration for block '{block_name}' must be a dict (for parameters) "
+                f"or a list (for sub-blocks). Got: {type(block_data_config)}")
 
         all_top_level_blocks_rendered.append(top_level_block.render(0) + "\n[]")
 

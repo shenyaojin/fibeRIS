@@ -1,3 +1,5 @@
+This readme is outdated. Need update. --Shenyao
+
 # fibeRIS
 DFOS analyzer/simulator designed for reservoir engineering. Designed for my personal projects. Focusing on multi-dimension 
 datasets interaction.
