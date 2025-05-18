@@ -1,6 +1,6 @@
-# src/fiberis/moose/input_generator.py
+# Input file generator for MOOSE (Multiphysics Object Oriented Simulation Environment) by INL
+# Shenyao Jin, 05/17/2025, shenyaojin@mines.edu
 from typing import Dict, Any, List, Union
-
 
 # --- 1. Define the base Block class ---
 class MooseBlock:
