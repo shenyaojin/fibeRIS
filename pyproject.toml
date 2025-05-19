@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fiberis"
-version = "0.1.20" # Version should be updated when releasing new changes
+version = "0.2.2" # Version should be updated when releasing new changes
 description = "Fiber Reservoir Integrated Simulator"
 readme = "README.md"
 authors = [{ name = "Shenyao Jin", email = "shenyaojin@mines.edu" }]
@@ -43,7 +43,8 @@ dependencies = [
     "pandas>=1.5,<3.0",      # Pandas 3.0 might introduce API changes.
     "plotly>=5.10,<6.0",
     "python-dateutil>=2.8,<3.0",
-    "scipy>=1.8,<2.0"
+    "scipy>=1.8,<2.0",
+    "meshio>=5.0,<6.0"
 ]
 
 [project.optional-dependencies]
@@ -83,7 +84,7 @@ Issues = "https://github.com/shenyaojin/fibeRIS/issues" # Or use "Bug Tracker"
 where = ["src"]
 # You can add 'namespaces = false' if you are not using namespace packages.
 # namespaces = false
-# You can also explicitly list packages if preferred over find:
+# You can also explicitly list packsages if preferred over find:
 # packages = ["fiberis"]
 
 # Example: Configuration for Black code formatter
