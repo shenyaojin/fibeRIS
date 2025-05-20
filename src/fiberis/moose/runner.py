@@ -2,7 +2,7 @@
 import subprocess
 import os
 import shlex
-import shutil  # Moved import shutil to the top
+import shutil
 from typing import Optional, Tuple, Dict, List
 
 
@@ -37,13 +37,14 @@ class MooseRunner:
         self.last_run_returncode: Optional[int] = None
 
     def run(self,
-            input_file_path: str,  # This should be the path to the ORIGINAL input file
+            input_file_path: str,
             output_directory: Optional[str] = None,
             num_processors: int = 1,
             additional_args: Optional[List[str]] = None,
-            moose_env_vars: Optional[Dict[str, str]] = None) -> Tuple[bool, str, str]:
+            moose_env_vars: Optional[Dict[str, str]] = None,
+            log_file_name: Optional[str] = "log.txt") -> Tuple[bool, str, str]: # Added log_file_name
         """
-        Runs a MOOSE simulation.
+        Runs a MOOSE simulation and optionally logs STDOUT.
 
         Args:
             input_file_path (str): Path to the original MOOSE input file (.i).
@@ -54,6 +55,9 @@ class MooseRunner:
             additional_args (Optional[List[str]]): A list of additional command-line arguments
                                                    to pass to the MOOSE executable.
             moose_env_vars (Optional[Dict[str, str]]): Environment variables to set for the MOOSE process.
+            log_file_name (Optional[str]): Name of the file to save the STDOUT log.
+                                           If None, logging is skipped. Defaults to "log.txt".
+                                           The log file is saved in the execution directory (cwd).
 
         Returns:
             Tuple[bool, str, str]: A tuple containing:
@@ -68,11 +72,8 @@ class MooseRunner:
         input_file_basename = os.path.basename(original_input_file_abspath)
 
         if output_directory:
-            # Ensure the output directory exists
             os.makedirs(output_directory, exist_ok=True)
             cwd = os.path.abspath(output_directory)
-
-            # Copy the original input file to the output directory (working directory)
             staged_input_file_path = os.path.join(cwd, input_file_basename)
             try:
                 shutil.copy(original_input_file_abspath, staged_input_file_path)
@@ -81,22 +82,23 @@ class MooseRunner:
                 error_message = f"Failed to copy input file to output directory: {e}"
                 print(error_message)
                 return False, "", error_message
-
-            # MOOSE will be called with the basename of the input file, relative to cwd
             input_file_path_for_cmd = input_file_basename
         else:
-            # If no output_directory, run from the input file's directory
             cwd = os.path.abspath(os.path.dirname(original_input_file_abspath) or '.')
             input_file_path_for_cmd = input_file_basename
+            # In this case, staged_input_file_path is not strictly needed for cleanup logic later,
+            # but we might refer to the original if no output_directory is set.
+            staged_input_file_path = original_input_file_abspath
+
 
         command = []
         if num_processors > 1:
-            if not shutil.which("mpiexec"):  # Check if mpiexec is available
+            if not shutil.which("mpiexec"):
                 raise EnvironmentError("mpiexec not found in PATH. Cannot run in parallel.")
             command.extend(["mpiexec", "-n", str(num_processors)])
 
         command.append(self.moose_executable_path)
-        command.extend(["-i", input_file_path_for_cmd])  # Use the (potentially staged) input file name
+        command.extend(["-i", input_file_path_for_cmd])
 
         if additional_args:
             command.extend(additional_args)
@@ -115,7 +117,7 @@ class MooseRunner:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                cwd=cwd,  # MOOSE will run in this directory
+                cwd=cwd,
                 env=current_env
             )
             stdout, stderr = process.communicate()
@@ -125,12 +127,23 @@ class MooseRunner:
             self.last_run_stderr = stderr
             self.last_run_returncode = returncode
 
-            # Clean up the staged input file if it was copied
-            if output_directory and os.path.exists(staged_input_file_path):
+            # --- Logging STDOUT ---
+            if log_file_name and stdout: # Only write if log_file_name is provided and stdout is not empty
+                log_file_path = os.path.join(cwd, log_file_name)
+                try:
+                    with open(log_file_path, 'w') as lf:
+                        lf.write(stdout)
+                    print(f"STDOUT successfully written to log file: {log_file_path}")
+                except IOError as e:
+                    print(f"Warning: Could not write STDOUT to log file {log_file_path}: {e}")
+            # --- End Logging STDOUT ---
+
+
+            if output_directory and os.path.exists(staged_input_file_path) and staged_input_file_path != original_input_file_abspath:
                 try:
                     # os.remove(staged_input_file_path) # Optional: remove the copied .i file
                     # print(f"Cleaned up staged input file: {staged_input_file_path}")
-                    pass  # Decided not to remove it for now, might be useful for inspection
+                    pass
                 except OSError as e:
                     print(f"Warning: Could not remove staged input file {staged_input_file_path}: {e}")
 
@@ -166,21 +179,6 @@ class MooseRunner:
             return False, "", error_message
 
 
-# Example usage (intended for testing or direct script execution)
-# This part should be removed if this file is purely a module.
-# For testing this module's changes, you would typically run your separate test script
-# (like 102_moose_runner.py) which imports and uses this MooseRunner.
 if __name__ == "__main__":
     print("This is a module, intended to be imported.")
     print("To test MooseRunner, please use a separate test script.")
-    # Example:
-    # test_moose_app = "path/to/your/moose_app-opt"
-    # test_input = "path/to/your/input.i"
-    # test_output_dir = "test_run_output"
-    #
-    # if os.path.exists(test_moose_app) and os.path.exists(test_input):
-    #     runner = MooseRunner(moose_executable_path=test_moose_app)
-    #     runner.run(input_file_path=test_input, output_directory=test_output_dir)
-    # else:
-    #     print("Please set 'test_moose_app' and 'test_input' for a direct test.")
-

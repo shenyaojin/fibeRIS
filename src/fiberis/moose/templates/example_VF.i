@@ -72,14 +72,14 @@
   [refine]
     type = RefineBlockGenerator
     input = fracture
-    refinement = 1
+    refinement = '1 1'
     block = '3 1'
   []
 
   [refine2]
     type = RefineBlockGenerator
     input = refine
-    refinement = 1
+    refinement = '1 1'
     block = '4 2'
   []
 

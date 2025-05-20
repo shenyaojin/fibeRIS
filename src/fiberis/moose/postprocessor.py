@@ -1,6 +1,8 @@
 # src/fiberis/moose/postprocessor.py
 # The module is designed to read MOOSE Exodus II output files and extract data for analysis.
 # Shenyao Jin, 5/18/2025, shenyaojin@mines.edu
+# This script is part of the fibeRIS project, which is licensed under the WTFPL (https://opensource.org/licenses/WTFPL).
+# There are some issues with meshio and MOOSE Exodus II files, especially with the time steps.
 import meshio
 import numpy as np
 from scipy.spatial import KDTree  # For finding nearest neighbors

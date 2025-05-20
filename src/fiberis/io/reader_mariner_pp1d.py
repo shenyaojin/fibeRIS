@@ -6,7 +6,6 @@
 import numpy as np
 from fiberis.io import core
 
-
 class MarinerPP1D(core.DataIO):
 
     def __init__(self):
