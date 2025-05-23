@@ -6,6 +6,7 @@ from typing import Dict, Any, List, Union
 class MooseBlock:
     """
     Base class for a generic block [...] in a MOOSE input file.
+    This class can be used to create blocks with parameters and sub-blocks.
     """
 
     def __init__(self, block_name: str, block_type: Union[str, None] = None):
