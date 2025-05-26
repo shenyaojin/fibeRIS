@@ -320,7 +320,7 @@ class Data2D():
 
         # Set axis labels and handle timestamp formatting
         ax.set_xlabel('Time')
-        ax.set_ylabel('Depth')
+        ax.set_ylabel('Measured Depth')
         if useTimeStamp:
             formatter = mdates.DateFormatter('%m-%d %H:%M')
             ax.xaxis.set_major_formatter(formatter)
