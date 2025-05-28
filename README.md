@@ -1,32 +1,20 @@
-This readme is outdated. Need update. --Shenyao
+# FibeRIS
 
-# fibeRIS
-DFOS analyzer/simulator designed for reservoir engineering. Designed for my personal projects. Focusing on multi-dimension 
-datasets interaction.
+**fibeRIS**: Distributed Fiber Optic Sensing (DFOS) Analyzer and Simulator for Reservoir Engineering.
 
-I'll finish this MD file to illustrate what this package can do in the future.
+`fibeRIS` is a Python-based toolkit designed for the analysis, simulation, and management of 
+data relevant to reservoir engineering, with a particular focus on Distributed Fiber Optic Sensing (DFOS) data. 
+This project provides modules for handling multi-dimensional datasets, performing signal processing, simulating pressure 
+diffusion, and interacting with the MOOSE (Multiphysics Object-Oriented Simulation Environment) framework.
 
-# Installation
+## Installation
 
-Use editable mode to install the package, for it's still under development. I'll upload it to PyPI when I think it's complete.
+To install `fibeRIS` in editable mode (recommended during its ongoing development):
 
 ```bash
 pip install -e .
 ```
+## Core Features & Workflow 
 
-# Workflow
-## Data processing
-The **fiberis** only accepts the data packed with the npz file with specific variables for I/O performance.
+This package is organized into several key packages to support a comprehensive data processing and simulation workflow:
 
-All the datasets are recognized as ref axis(`xaxis`, `taxis`, ...) and data(keyname `data`). 
-
-# Future work
-
-- [ ] Add HFTS2 IO
-- [ ] Add 3D IO and processing
-- [x] Implement more signal processing methods in 2D
-- [ ] Rewrite the simulation part -> There is a fatal bug in 1D single source simulator. Need to fix it ASAP!!!
-
-# License 
-
-This project is under WTFPL – Do What the Fuck You Want to Public License.
