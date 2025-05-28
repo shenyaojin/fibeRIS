@@ -61,11 +61,11 @@ class SRVConfig:
     def __init__(self,
                  name: str,
                  length: float, # Dimension along X-axis by default
-                 width: float,  # Dimension along Y-axis by default
+                 height: float,  # Dimension along Y-axis by default
                  center_x: float,
                  center_y: float,
                  mesh_length_param: Optional[float] = None, # E.g., target element size or refinement level along length
-                 mesh_width_param: Optional[float] = None,  # E.g., target element size or refinement level along width
+                 mesh_height_param: Optional[float] = None,  # E.g., target element size or refinement level along height
                  permeability: Optional[float] = None):
         """
         Initializes an SRVConfig object.
@@ -73,22 +73,22 @@ class SRVConfig:
         Args:
             name (str): Unique name/identifier for the SRV zone.
             length (float): Length of the SRV zone (e.g., along X-axis).
-            width (float): Width of the SRV zone (e.g., along Y-axis).
+            height (float): height of the SRV zone (e.g., along Y-axis).
             center_x (float): X-coordinate of the SRV zone's center point.
             center_y (float): Y-coordinate of the SRV zone's center point.
             mesh_length_param (Optional[float], optional): Mesh size or refinement parameter along the SRV zone's length.
                                                             Defaults to None.
-            mesh_width_param (Optional[float], optional): Mesh size or refinement parameter along the SRV zone's width.
+            mesh_height_param (Optional[float], optional): Mesh size or refinement parameter along the SRV zone's height.
                                                            Defaults to None.
             permeability (Optional[float], optional): Permeability of the SRV zone. Defaults to None.
         """
         self.name: str = name
         self.length: float = length
-        self.width: float = width
+        self.height: float = height
         self.center_x: float = center_x
         self.center_y: float = center_y
         self.mesh_length_param: Optional[float] = mesh_length_param
-        self.mesh_width_param: Optional[float] = mesh_width_param
+        self.mesh_height_param: Optional[float] = mesh_height_param
         self.permeability: Optional[float] = permeability
 
 if __name__ == '__main__':
@@ -107,7 +107,7 @@ if __name__ == '__main__':
     srv1_config = SRVConfig(
         name="PrimarySRV",
         length=400.0,
-        width=100.0,
+        height=100.0,
         center_x=500.0,
         center_y=250.0,
         mesh_length_param=10.0,
@@ -121,6 +121,6 @@ if __name__ == '__main__':
     print(f"  Permeability: {fracture1_config.permeability}")
 
     print(f"\nSRV Config ('{srv1_config.name}'):")
-    print(f"  Length: {srv1_config.length}, Width: {srv1_config.width}")
+    print(f"  Length: {srv1_config.length}, height: {srv1_config.height}")
     print(f"  Center: ({srv1_config.center_x}, {srv1_config.center_y})")
     print(f"  Permeability: {srv1_config.permeability}")

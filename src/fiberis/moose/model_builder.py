@@ -2,7 +2,6 @@
 # having to interact with the input file directly.
 # Higher-level API for building MOOSE input files, compared to input_generator.py and input_editor.py.
 # Shenyao Jin, shenyaojin@mines.edu, 05/24/2025
-# /src/fiberis/moose/model_builder.py
 # fiberis/moose/model_builder.py
 from typing import List, Dict, Any, Union, Tuple, Optional
 
@@ -245,12 +244,12 @@ class ModelBuilder:
         self._block_id_to_name_map[block_id_to_use] = srv_config.name
 
         half_length = srv_config.length / 2.0
-        half_width = srv_config.width / 2.0  # SRV 'width' corresponds to y-dimension here
+        half_height = srv_config.height / 2.0  # SRV 'height' corresponds to y-dimension here
 
         xmin = srv_config.center_x - half_length
         xmax = srv_config.center_x + half_length
-        ymin = srv_config.center_y - half_width
-        ymax = srv_config.center_y + half_width
+        ymin = srv_config.center_y - half_height
+        ymax = srv_config.center_y + half_height
 
         z_epsilon_bottom = "0.00000001"
         z_epsilon_top = "0"
@@ -431,7 +430,7 @@ class ModelBuilder:
         # 2. Define SRV
         srv1_conf = SRVConfig(
             name="SRV1",  # This will be the final block name
-            length=300, width=80,
+            length=300, height=80,
             center_x=500, center_y=250
         )
         # Assign a specific numeric ID for SRV1, e.g., 1
