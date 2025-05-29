@@ -5,10 +5,8 @@
 # fiberis/moose/model_builder.py
 from typing import List, Dict, Any, Union, Tuple, Optional
 
-# Import config classes
+# Import config classes and lower-level MooseBlock class.
 from fiberis.moose.config import HydraulicFractureConfig, SRVConfig
-
-# Import the core generation function from your input_generator.py
 from fiberis.moose.input_generator import MooseBlock
 
 
@@ -225,12 +223,12 @@ class ModelBuilder:
         self._block_id_to_name_map[block_id_to_use] = srv_config.name
 
         half_length = srv_config.length / 2.0
-        half_width = srv_config.width / 2.0
+        half_height = srv_config.height / 2.0
 
         xmin = srv_config.center_x - half_length
         xmax = srv_config.center_x + half_length
-        ymin = srv_config.center_y - half_width
-        ymax = srv_config.center_y + half_width
+        ymin = srv_config.center_y - half_height
+        ymax = srv_config.center_y + half_height
 
         z_epsilon_bottom = "0.00000001"
         z_epsilon_top = "0"
@@ -292,6 +290,209 @@ class ModelBuilder:
 
         mesh_moose_block.add_sub_block(nodeset_sub_block)
         self._last_mesh_op_name_within_mesh_block = op_name
+        return self
+
+    def _get_or_create_kernels_moose_block(self) -> 'MooseBlock':
+        """
+        Retrieves the main 'Kernels' MooseBlock from self._top_level_blocks,
+        or creates and adds it if it doesn't exist.
+        """
+        # This assumes self._top_level_blocks is a List[MooseBlock]
+        for block in self._top_level_blocks:
+            if block.block_name == "Kernels":
+                return block
+        # If not found, create it
+        kernels_block = MooseBlock("Kernels")
+        self._top_level_blocks.append(kernels_block)  # Add to the list of top-level blocks
+        return kernels_block
+
+    def add_time_derivative_kernel(self,
+                                   variable: str,
+                                   kernel_name: Optional[str] = None) -> 'ModelBuilder':
+        """
+        Adds a TimeDerivative kernel.
+
+        Args:
+            variable (str): The variable this kernel acts upon (e.g., "pp").
+            kernel_name (Optional[str], optional): The name for this kernel sub-block.
+                                                   Defaults to "dot_{variable}" if None.
+
+        Returns:
+            ModelBuilder: Returns self for chaining.
+        """
+        kernels_main_block = self._get_or_create_kernels_moose_block()
+        name_to_use = kernel_name if kernel_name is not None else f"dot_{variable}"
+
+        kernel_obj = MooseBlock(name_to_use, block_type="TimeDerivative")
+        kernel_obj.add_param("variable", variable)
+
+        kernels_main_block.add_sub_block(kernel_obj)
+        return self
+
+    def add_function_diffusion_kernel(self,
+                                      kernel_name: str,
+                                      variable: str,
+                                      function_name: str,
+                                      block_names: Union[str, List[str]]) -> 'ModelBuilder':
+        """
+        Adds a FunctionDiffusion kernel.
+
+        Args:
+            kernel_name (str): The name for this kernel sub-block (e.g., "srv_diffusion").
+            variable (str): The variable this kernel acts upon (e.g., "pp").
+            function_name (str): The name of the MOOSE Function that defines the diffusion coefficient.
+            block_names (Union[str, List[str]]): The block(s) this kernel applies to.
+                                                 Can be a single string or a list of strings.
+
+        Returns:
+            ModelBuilder: Returns self for chaining.
+        """
+        kernels_main_block = self._get_or_create_kernels_moose_block()
+
+        kernel_obj = MooseBlock(kernel_name, block_type="FunctionDiffusion")
+        kernel_obj.add_param("variable", variable)
+        kernel_obj.add_param("function", function_name)
+        if isinstance(block_names, list):
+            kernel_obj.add_param("block", ' '.join(block_names))
+        else:
+            kernel_obj.add_param("block", block_names)
+
+        kernels_main_block.add_sub_block(kernel_obj)
+        return self
+
+    def add_anisotropic_diffusion_kernel(self,
+                                         kernel_name: str,
+                                         variable: str,
+                                         block_names: Union[str, List[str]],
+                                         tensor_coefficient: str) -> 'ModelBuilder':
+        """
+        Adds an AnisotropicDiffusion kernel.
+
+        Args:
+            kernel_name (str): The name for this kernel sub-block (e.g., "matrix_diffusion").
+            variable (str): The variable this kernel acts upon (e.g., "pp").
+            block_names (Union[str, List[str]]): The block(s) this kernel applies to.
+            tensor_coefficient (str): The string representation of the anisotropic diffusion tensor
+                                      (e.g., "'Kxx Kxy Kxz  Kxy Kyy Kyz  Kxz Kyz Kzz'").
+
+        Returns:
+            ModelBuilder: Returns self for chaining.
+        """
+        kernels_main_block = self._get_or_create_kernels_moose_block()
+
+        kernel_obj = MooseBlock(kernel_name, block_type="AnisotropicDiffusion")
+        kernel_obj.add_param("variable", variable)
+        if isinstance(block_names, list):
+            kernel_obj.add_param("block", ' '.join(block_names))
+        else:
+            kernel_obj.add_param("block", block_names)
+        kernel_obj.add_param("tensor_coeff", tensor_coefficient)  # Value is already a string
+
+        kernels_main_block.add_sub_block(kernel_obj)
+        return self
+
+    def add_porous_flow_darcy_base_kernel(self,
+                                          kernel_name: str,
+                                          variable: str,
+                                          gravity_vector: str = '0 0 0') -> 'ModelBuilder':
+        """
+        Adds a PorousFlowFullySaturatedDarcyBase kernel (or similar Darcy flux term).
+
+        Args:
+            kernel_name (str): The name for this kernel sub-block (e.g., "flux").
+            variable (str): The variable this kernel acts upon (e.g., "pp").
+            gravity_vector (str, optional): String representation of the gravity vector.
+                                            Defaults to '0 0 0'.
+
+        Returns:
+            ModelBuilder: Returns self for chaining.
+        """
+        kernels_main_block = self._get_or_create_kernels_moose_block()
+
+        kernel_obj = MooseBlock(kernel_name, block_type="PorousFlowFullySaturatedDarcyBase")
+        kernel_obj.add_param("variable", variable)
+        kernel_obj.add_param("gravity", gravity_vector)  # Value is already a string
+
+        kernels_main_block.add_sub_block(kernel_obj)
+        return self
+
+    def add_stress_divergence_tensor_kernel(self,
+                                            kernel_name: str,
+                                            variable: str,
+                                            component: int) -> 'ModelBuilder':
+        """
+        Adds a StressDivergenceTensors kernel.
+
+        Args:
+            kernel_name (str): The name for this kernel sub-block (e.g., "grad_stress_x").
+            variable (str): The displacement variable this kernel acts upon (e.g., "disp_x").
+            component (int): The component (0 for x, 1 for y, 2 for z).
+
+        Returns:
+            ModelBuilder: Returns self for chaining.
+        """
+        kernels_main_block = self._get_or_create_kernels_moose_block()
+
+        kernel_obj = MooseBlock(kernel_name, block_type="StressDivergenceTensors")
+        kernel_obj.add_param("variable", variable)
+        kernel_obj.add_param("component", component)
+
+        kernels_main_block.add_sub_block(kernel_obj)
+        return self
+
+    def add_porous_flow_effective_stress_coupling_kernel(self,
+                                                         kernel_name: str,
+                                                         variable: str,
+                                                         # This is typically a displacement variable component
+                                                         component: int,
+                                                         biot_coefficient: float) -> 'ModelBuilder':
+        """
+        Adds a PorousFlowEffectiveStressCoupling kernel.
+        This kernel adds a term related to the divergence of displacement (strain) to the flow equation.
+
+        Args:
+            kernel_name (str): The name for this kernel sub-block (e.g., "poro_x").
+            variable (str): The displacement variable component this term is derived from (e.g., "disp_x").
+            component (int): The component of displacement gradient (0 for d/dx, 1 for d/dy).
+            biot_coefficient (float): The Biot coefficient.
+
+        Returns:
+            ModelBuilder: Returns self for chaining.
+        """
+        kernels_main_block = self._get_or_create_kernels_moose_block()
+
+        kernel_obj = MooseBlock(kernel_name, block_type="PorousFlowEffectiveStressCoupling")
+        kernel_obj.add_param("variable", variable)
+        kernel_obj.add_param("component", component)
+        kernel_obj.add_param("biot_coefficient", biot_coefficient)
+
+        kernels_main_block.add_sub_block(kernel_obj)
+        return self
+
+    def add_porous_flow_mass_volumetric_expansion_kernel(self,
+                                                         kernel_name: str,
+                                                         variable: str,  # This is typically the pore pressure variable
+                                                         fluid_component: int = 0) -> 'ModelBuilder':
+        """
+        Adds a PorousFlowMassVolumetricExpansion kernel.
+        This kernel accounts for fluid compressibility and other volumetric expansion effects.
+
+        Args:
+            kernel_name (str): The name for this kernel sub-block (e.g., "vol_strain_rate_water").
+            variable (str): The pore pressure variable this term is associated with (e.g., "pp").
+            fluid_component (int, optional): The fluid component index if using multi-component flow.
+                                             Defaults to 0.
+
+        Returns:
+            ModelBuilder: Returns self for chaining.
+        """
+        kernels_main_block = self._get_or_create_kernels_moose_block()
+
+        kernel_obj = MooseBlock(kernel_name, block_type="PorousFlowMassVolumetricExpansion")
+        kernel_obj.add_param("variable", variable)
+        kernel_obj.add_param("fluid_component", fluid_component)
+
+        kernels_main_block.add_sub_block(kernel_obj)
         return self
 
     def _finalize_mesh_block_renaming(self):
@@ -375,7 +576,7 @@ class ModelBuilder:
         # 2. Define SRV
         srv1_conf = SRVConfig(
             name="MySRV",
-            length=300, width=80,
+            length=300, height=80,
             center_x=500, center_y=250
         )
         builder.add_srv_zone_2d(srv_config=srv1_conf, target_moose_block_id=1, refinement_passes=1)
