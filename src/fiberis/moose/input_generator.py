@@ -70,7 +70,8 @@ class MooseBlock:
         return "\n".join(lines)
 
 
-# --- Specific block classes (can be useful for more complex files) ---
+# --- Specific block classes (can be useful for more complex files in the future.) ---
+# Function blocks, MeshGenerator blocks, etc. Might be removed if not needed. -- Shenyao
 class GeneratedMeshGeneratorBlock(MooseBlock):
     """Specific class for GeneratedMeshGenerator blocks for convenience."""
 
