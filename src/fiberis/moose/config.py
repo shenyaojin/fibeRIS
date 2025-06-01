@@ -1,7 +1,7 @@
 # fiberis/moose/configs.py
 # This file defines configuration classes for hydraulic fractures and stimulated reservoir volumes (SRVs).
 # Shenyao Jin, shenyaojin@mines.edu, 2025-05-26
-from typing import Optional
+from typing import List, Dict, Any, Optional
 
 class HydraulicFractureConfig:
     """
@@ -91,36 +91,168 @@ class SRVConfig:
         self.mesh_height_param: Optional[float] = mesh_height_param
         self.permeability: Optional[float] = permeability
 
+class IndicatorConfig:
+    """
+    Configuration for a single Indicator within the MOOSE [Adaptivity][Indicators] block.
+    An indicator computes an error estimate or other metric for each element.
+    """
+    def __init__(self,
+                 name: str,
+                 type: str,
+                 params: Dict[str, Any]):
+        """
+        Initializes an IndicatorConfig object.
+
+        Args:
+            name (str): The user-chosen name for this indicator (e.g., "error").
+                        This name is used locally within the [Adaptivity] block,
+                        for example, to be referenced by a Marker.
+            type (str): The MOOSE type for the indicator (e.g., "GradientJumpIndicator",
+                        "ErrorResidualIndicator").
+            params (Dict[str, Any]): A dictionary of parameters for this indicator.
+                                     Example: {"variable": "convected", "outputs": "none"}
+        """
+        self.name: str = name
+        self.type: str = type
+        self.params: Dict[str, Any] = params
+
+class MarkerConfig:
+    """
+    Configuration for a single Marker within the MOOSE [Adaptivity][Markers] block.
+    A marker determines which elements to refine or coarsen based on values from an indicator.
+    """
+    def __init__(self,
+                 name: str,
+                 type: str,
+                 params: Dict[str, Any]):
+        """
+        Initializes a MarkerConfig object.
+
+        Args:
+            name (str): The user-chosen name for this marker (e.g., "errorfrac").
+                        This name is used by the main [Adaptivity] block's 'marker' parameter.
+            type (str): The MOOSE type for the marker (e.g., "ErrorFractionMarker",
+                        "ValueThresholdMarker").
+            params (Dict[str, Any]): A dictionary of parameters for this marker.
+                                     Example: {"indicator": "error", "refine": 0.5, "coarsen": 0}
+                                     The "indicator" key should refer to the 'name' of an IndicatorConfig.
+        """
+        self.name: str = name
+        self.type: str = type
+        self.params: Dict[str, Any] = params
+
+class AdaptivityConfig:
+    """
+    Configuration for the MOOSE [Adaptivity] top-level block.
+    Manages indicators, markers, and overall adaptivity settings.
+    """
+    def __init__(self,
+                 marker_to_use: str,
+                 steps: int,
+                 indicators: Optional[List[IndicatorConfig]] = None,
+                 markers: Optional[List[MarkerConfig]] = None):
+        """
+        Initializes an AdaptivityConfig object.
+
+        Args:
+            marker_to_use (str): The name of the MarkerConfig instance (defined in the 'markers' list)
+                                 that the [Adaptivity] block should use. This corresponds to the
+                                 'marker = ...' parameter in the [Adaptivity] block.
+            steps (int): The number of adaptivity steps to perform during the simulation.
+                         Corresponds to the 'steps = ...' parameter.
+            indicators (Optional[List[IndicatorConfig]], optional): A list of IndicatorConfig objects.
+                                                                    Defaults to None, meaning no indicators
+                                                                    will be explicitly defined by this object initially.
+            markers (Optional[List[MarkerConfig]], optional): A list of MarkerConfig objects.
+                                                              Defaults to None.
+        """
+        self.marker_to_use: str = marker_to_use
+        self.steps: int = steps
+        self.indicators: List[IndicatorConfig] = indicators if indicators is not None else []
+        self.markers: List[MarkerConfig] = markers if markers is not None else []
+
+    def add_indicator(self, indicator_config: IndicatorConfig):
+        """Adds an indicator configuration to this adaptivity setup."""
+        if not isinstance(indicator_config, IndicatorConfig):
+            raise TypeError("indicator_config must be an instance of IndicatorConfig.")
+        self.indicators.append(indicator_config)
+
+    def add_marker(self, marker_config: MarkerConfig):
+        """Adds a marker configuration to this adaptivity setup."""
+        if not isinstance(marker_config, MarkerConfig):
+            raise TypeError("marker_config must be an instance of MarkerConfig.")
+        self.markers.append(marker_config)
+
 if __name__ == '__main__':
-    # Example Usage:
-    fracture1_config = HydraulicFractureConfig(
-        name="MainFracture",
-        length=200.0,
-        height=0.1,
-        center_x=500.0,
-        center_y=250.0,
-        orientation_angle=0.0, # Set to 0 for now as per discussion
-        mesh_length_param=5.0,
-        permeability=1.0e-12
+    # Example usage of the new AMA configuration classes:
+
+    # 1. Define an indicator
+    error_indicator = IndicatorConfig(
+        name="error_on_pp",
+        type="GradientJumpIndicator",
+        params={"variable": "pp", "outputs": "none"} # Assuming 'pp' is a defined variable
     )
 
-    srv1_config = SRVConfig(
-        name="PrimarySRV",
-        length=400.0,
-        height=100.0,
-        center_x=500.0,
-        center_y=250.0,
-        mesh_length_param=10.0,
-        permeability=1.0e-15
+    # 2. Define another indicator (optional)
+    another_indicator = IndicatorConfig(
+        name="solution_indicator",
+        type="ValueJumpIndicator", # Example type
+        params={"variable": "disp_x"}
     )
 
-    print(f"Fracture Config ('{fracture1_config.name}'):")
-    print(f"  Length: {fracture1_config.length}, Height/Aperture: {fracture1_config.height}")
-    print(f"  Center: ({fracture1_config.center_x}, {fracture1_config.center_y})")
-    print(f"  Orientation: {fracture1_config.orientation_angle}°")
-    print(f"  Permeability: {fracture1_config.permeability}")
+    # 3. Define a marker that uses the first indicator
+    error_fraction_marker = MarkerConfig(
+        name="errorfrac_pp_marker",
+        type="ErrorFractionMarker",
+        params={"indicator": "error_on_pp", "refine": 0.6, "coarsen": 0.1, "outputs": "none"}
+    )
 
-    print(f"\nSRV Config ('{srv1_config.name}'):")
-    print(f"  Length: {srv1_config.length}, height: {srv1_config.height}")
-    print(f"  Center: ({srv1_config.center_x}, {srv1_config.center_y})")
-    print(f"  Permeability: {srv1_config.permeability}")
+    # 4. Define another marker (optional)
+    threshold_marker = MarkerConfig(
+        name="disp_x_threshold",
+        type="ValueThresholdMarker", # Example type
+        params={"indicator": "solution_indicator", "min_value": 0.01, "max_value": 0.5, "refine": True}
+    )
+
+
+    # 5. Define the overall adaptivity configuration
+    # Option A: Initialize with empty lists and add later
+    ama_setup_option_a = AdaptivityConfig(
+        marker_to_use="errorfrac_pp_marker", # This name must match one of the MarkerConfig names
+        steps=3
+    )
+    ama_setup_option_a.add_indicator(error_indicator)
+    ama_setup_option_a.add_marker(error_fraction_marker)
+    # Optionally add more
+    ama_setup_option_a.add_indicator(another_indicator)
+    ama_setup_option_a.add_marker(threshold_marker)
+
+
+    # Option B: Initialize directly with lists of configs
+    ama_setup_option_b = AdaptivityConfig(
+        marker_to_use="errorfrac_pp_marker",
+        steps=2,
+        indicators=[
+            IndicatorConfig(name="pressure_grad", type="GradientJumpIndicator", params={"variable": "pp"}),
+            IndicatorConfig(name="stress_error", type="SomeOtherErrorIndicator", params={"variable": "von_mises_stress"})
+        ],
+        markers=[
+            MarkerConfig(name="errorfrac_pp_marker", type="ErrorFractionMarker", params={"indicator": "pressure_grad", "refine": 0.5}),
+            MarkerConfig(name="stress_based_marker", type="ErrorFractionMarker", params={"indicator": "stress_error", "refine": 0.4})
+        ]
+    )
+
+
+    print("Adaptivity Configuration Example (Option A):")
+    print(f"  Main Adaptivity Settings: marker='{ama_setup_option_a.marker_to_use}', steps={ama_setup_option_a.steps}")
+    for ind in ama_setup_option_a.indicators:
+        print(f"    Indicator: name='{ind.name}', type='{ind.type}', params={ind.params}")
+    for marker in ama_setup_option_a.markers:
+        print(f"    Marker: name='{marker.name}', type='{marker.type}', params={marker.params}")
+
+    print("\nAdaptivity Configuration Example (Option B):")
+    print(f"  Main Adaptivity Settings: marker='{ama_setup_option_b.marker_to_use}', steps={ama_setup_option_b.steps}")
+    for ind in ama_setup_option_b.indicators:
+        print(f"    Indicator: name='{ind.name}', type='{ind.type}', params={ind.params}")
+    for marker in ama_setup_option_b.markers:
+        print(f"    Marker: name='{marker.name}', type='{marker.type}', params={marker.params}")
