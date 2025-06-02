@@ -1,7 +1,7 @@
 # fiberis/moose/configs.py
 # This file defines configuration classes for hydraulic fractures and stimulated reservoir volumes (SRVs).
 # Shenyao Jin, shenyaojin@mines.edu, 2025-05-26
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union, Tuple
 
 class HydraulicFractureConfig:
     """
@@ -182,6 +182,86 @@ class AdaptivityConfig:
         if not isinstance(marker_config, MarkerConfig):
             raise TypeError("marker_config must be an instance of MarkerConfig.")
         self.markers.append(marker_config)
+
+class PostprocessorConfig:
+    """
+    Configuration for a single Postprocessor in the MOOSE [Postprocessors] block.
+    This class aims to be flexible enough to define various types of postprocessors.
+    """
+
+    def __init__(self,
+                 name: str,
+                 pp_type: str,
+                 execute_on: Optional[Union[str, List[str]]] = None,
+                 variable: Optional[str] = None,
+                 variables: Optional[List[str]] = None,
+                 block: Optional[Union[str, int, List[Union[str, int]]]] = None,  # Can be name or ID
+                 boundary: Optional[Union[str, int, List[Union[str, int]]]] = None,  # Can be name or ID
+                 nodeset: Optional[Union[str, int, List[Union[str, int]]]] = None,  # Can be name or ID
+                 point: Optional[Union[Tuple[float, ...], str]] = None,
+                 # For PointValue, e.g., (x,y) or (x,y,z) or "x y z"
+                 points: Optional[List[Union[Tuple[float, ...], str]]] = None,  # For VectorPointValueSampler
+                 output_file: Optional[str] = None,  # For some vector postprocessors
+                 other_params: Optional[Dict[str, Any]] = None):
+        """
+        Initializes a PostprocessorConfig object.
+
+        Args:
+            name (str): The user-chosen name for this postprocessor sub-block.
+                        This name is how the postprocessor is identified in outputs (e.g., CSV headers).
+            pp_type (str): The MOOSE type for the postprocessor (e.g., "PointValue",
+                           "ElementAverageValue", "VectorPointValueSampler").
+            execute_on (Optional[Union[str, List[str]]], optional):
+                When this postprocessor should execute. Can be a single string (e.g., "initial timestep_end final")
+                or a list of MOOSE execution flags (e.g., ["initial", "timestep_end", "final"]).
+                Defaults to None (MOOSE default, often 'timestep_end').
+            variable (Optional[str], optional): The single variable this postprocessor operates on.
+                                                Used by many scalar postprocessors. Defaults to None.
+            variables (Optional[List[str]], optional): A list of variables for postprocessors
+                                                       that operate on multiple variables (e.g., VectorPointValueSampler).
+                                                       Defaults to None.
+            block (Optional[Union[str, int, List[Union[str, int]]]], optional):
+                The block name(s) or ID(s) this postprocessor applies to. Defaults to None.
+            boundary (Optional[Union[str, int, List[Union[str, int]]]], optional):
+                The boundary name(s) or ID(s) (sideset) this postprocessor applies to. Defaults to None.
+            nodeset (Optional[Union[str, int, List[Union[str, int]]]], optional):
+                The nodeset name(s) or ID(s) this postprocessor applies to. Defaults to None.
+            point (Optional[Union[Tuple[float, ...], str]], optional):
+                Coordinates for point-based postprocessors like "PointValue".
+                Can be a tuple (x,y) or (x,y,z) or a space-separated string "x y z". Defaults to None.
+            points (Optional[List[Union[Tuple[float, ...], str]]], optional):
+                A list of points for postprocessors like "VectorPointValueSampler".
+                Each point can be a tuple or a string. Defaults to None.
+            output_file (Optional[str], optional):
+                For vector postprocessors or others that can write to a specific file. Defaults to None.
+            other_params (Optional[Dict[str, Any]], optional):
+                A dictionary for any other parameters specific to the 'pp_type' not covered above.
+                Defaults to None.
+        """
+        self.name: str = name
+        self.pp_type: str = pp_type
+        self.execute_on: Optional[Union[str, List[str]]] = execute_on
+        self.variable: Optional[str] = variable
+        self.variables: Optional[List[str]] = variables
+        self.block: Optional[Union[str, int, List[Union[str, int]]]] = block
+        self.boundary: Optional[Union[str, int, List[Union[str, int]]]] = boundary
+        self.nodeset: Optional[Union[str, int, List[Union[str, int]]]] = nodeset
+
+        # Ensure point and points are stored as MOOSE-compatible strings if provided as tuples
+        if point is not None and not isinstance(point, str):
+            self.point: Optional[str] = ' '.join(map(str, point))
+        else:
+            self.point: Optional[str] = point  # type: ignore
+
+        if points is not None:
+            self.points: Optional[List[str]] = [
+                ' '.join(map(str, p)) if not isinstance(p, str) else p for p in points
+            ]
+        else:
+            self.points: Optional[List[str]] = None
+
+        self.output_file: Optional[str] = output_file
+        self.other_params: Dict[str, Any] = other_params if other_params is not None else {}
 
 if __name__ == '__main__':
     # Example usage of the new AMA configuration classes:
