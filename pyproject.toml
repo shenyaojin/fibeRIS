@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fiberis"
-version = "0.2.3" # Version should be updated when releasing new changes
+version = "0.2.4" # Version should be updated when releasing new changes
 description = "Fiber Reservoir Integrated Simulator"
 readme = "README.md"
 authors = [{ name = "Shenyao Jin", email = "shenyaojin@mines.edu" }]

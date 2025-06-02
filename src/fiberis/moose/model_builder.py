@@ -1118,7 +1118,7 @@ class ModelBuilder:
         )
 
         # --- Option 2: Enable AMA using a detailed AdaptivityConfig object ---
-        # Comment out Option 1 if you want to test this one, or create a separate example
+        # from fiberis.moose.config import IndicatorConfig, MarkerConfig
         # indicator_conf = IndicatorConfig(name="pp_gradient", type="GradientJumpIndicator", params={"variable": "pp"})
         # marker_conf = MarkerConfig(name="pp_frac_marker", type="ErrorFractionMarker", params={"indicator": "pp_gradient", "refine": 0.5, "coarsen":0.05})
         # custom_ama_config = AdaptivityConfig(marker_to_use="pp_frac_marker", steps=2, indicators=[indicator_conf], markers=[marker_conf])
@@ -1184,16 +1184,16 @@ class ModelBuilder:
         builder.add_boundary_condition(
             name="injection_pressure_bc",
             bc_type="FunctionDirichletBC",
-            variable="pp",  # Assuming 'pp' variable
+            variable="pp",
             boundary_name="injection_well",
-            params={"function": "pres_func"}  # Assumes 'pres_func' will be defined in [Functions]
+            params={"function": "pres_func"}
         )
         # Confine x-displacement on left and right boundaries
         builder.add_boundary_condition(
             name="confine_disp_x_lr",
             bc_type="DirichletBC",
-            variable="disp_x",  # Assuming 'disp_x' variable
-            boundary_name=["left", "right"],  # Apply to multiple boundaries
+            variable="disp_x",
+            boundary_name=["left", "right"],
             params={"value": 0}
         )
         # Confine y-displacement on top boundary
