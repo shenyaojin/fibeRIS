@@ -6,7 +6,7 @@
 from typing import List, Dict, Any, Union, Tuple, Optional
 
 # Import config classes and lower-level MooseBlock class.
-from fiberis.moose.config import HydraulicFractureConfig, SRVConfig
+from fiberis.moose.config import HydraulicFractureConfig, SRVConfig, AdaptivityConfig
 from fiberis.moose.input_generator import MooseBlock
 
 
@@ -306,6 +306,7 @@ class ModelBuilder:
         self._top_level_blocks.append(kernels_block)  # Add to the list of top-level blocks
         return kernels_block
 
+    # --- API Methods for Kernels ---
     def add_time_derivative_kernel(self,
                                    variable: str,
                                    kernel_name: Optional[str] = None) -> 'ModelBuilder':
@@ -495,6 +496,154 @@ class ModelBuilder:
         kernels_main_block.add_sub_block(kernel_obj)
         return self
 
+    def _get_or_create_adaptivity_moose_block(self, adaptivity_block_name: str = "Adaptivity") -> 'MooseBlock':
+        """
+        Retrieves the main 'Adaptivity' MooseBlock from self._top_level_blocks,
+        or creates and adds it if it doesn't exist.
+        Internal helper method.
+        """
+        for block in self._top_level_blocks:
+            if block.block_name == adaptivity_block_name:
+                # Clear existing params and sub_blocks if we are re-configuring it
+                block.params.clear()
+                block.sub_blocks.clear()
+                return block
+        # If not found, create it
+        adapt_block = MooseBlock(adaptivity_block_name)
+        self._top_level_blocks.append(adapt_block)
+        return adapt_block
+
+    def set_adaptivity_options(self,
+                               enable: bool = True,
+                               config: Optional['AdaptivityConfig'] = None,
+                               # Use forward reference if AdaptivityConfig is in the same file and defined later, or import
+                               default_template_settings: Optional[Dict[str, Any]] = None,
+                               adaptivity_block_name: str = "Adaptivity") -> 'ModelBuilder':
+        """
+        Sets the options for the [Adaptivity] block.
+
+        This method allows enabling/disabling adaptivity, using a detailed AdaptivityConfig object,
+        or applying a default template based on simple settings.
+
+        Args:
+            enable (bool, optional): If True, enables and configures adaptivity.
+                                     If False, removes the adaptivity block. Defaults to True.
+            config (Optional[AdaptivityConfig], optional): A pre-configured AdaptivityConfig object
+                                                           for detailed AMA setup. Defaults to None.
+            default_template_settings (Optional[Dict[str, Any]], optional):
+                If 'enable' is True and 'config' is None, these settings are used
+                to apply a default AMA template. Expected keys might include:
+                - 'monitored_variable' (str): Variable to base default indicator on (e.g., 'pp').
+                - 'refine_fraction' (float): Fraction of elements to refine (e.g., 0.3).
+                - 'coarsen_fraction' (float): Fraction of elements to coarsen (e.g., 0.05).
+                - 'steps' (int): Number of adaptivity steps (e.g., 2).
+                Defaults to None.
+            adaptivity_block_name (str, optional): The name for the [Adaptivity] top-level block.
+                                                   Defaults to "Adaptivity".
+
+        Returns:
+            ModelBuilder: Returns self for chaining.
+        """
+        if not enable:
+            # Remove the adaptivity block if it exists
+            self._top_level_blocks = [
+                block for block in self._top_level_blocks if block.block_name != adaptivity_block_name
+            ]
+            print(f"Info: Adaptivity block '{adaptivity_block_name}' removed (disabled).")
+            return self
+
+        adapt_moose_block = self._get_or_create_adaptivity_moose_block(adaptivity_block_name)
+
+        if config is not None:
+            # --- Configure using a detailed AdaptivityConfig object ---
+            if not isinstance(config, AdaptivityConfig):  # Make sure AdaptivityConfig is imported or defined
+                raise TypeError("The 'config' argument must be an instance of AdaptivityConfig.")
+
+            adapt_moose_block.add_param("marker", config.marker_to_use)
+            adapt_moose_block.add_param("steps", config.steps)
+
+            if config.indicators:
+                indicators_main_sub = MooseBlock("Indicators")
+                for ind_conf in config.indicators:
+                    indicator_obj = MooseBlock(ind_conf.name, block_type=ind_conf.type)
+                    for p_name, p_val in ind_conf.params.items():
+                        indicator_obj.add_param(p_name, p_val)
+                    indicators_main_sub.add_sub_block(indicator_obj)
+                adapt_moose_block.add_sub_block(indicators_main_sub)
+
+            if config.markers:
+                markers_main_sub = MooseBlock("Markers")
+                for marker_conf in config.markers:
+                    marker_obj = MooseBlock(marker_conf.name, block_type=marker_conf.type)
+                    for p_name, p_val in marker_conf.params.items():
+                        marker_obj.add_param(p_name, p_val)
+                    markers_main_sub.add_sub_block(marker_obj)
+                adapt_moose_block.add_sub_block(markers_main_sub)
+
+            print(f"Info: Adaptivity block '{adaptivity_block_name}' configured using provided AdaptivityConfig.")
+
+        elif default_template_settings is not None:
+            # --- Configure using a default template ---
+            print(f"Info: Configuring adaptivity block '{adaptivity_block_name}' using default template settings.")
+
+            mon_var = default_template_settings.get("monitored_variable", "pp")  # Default to 'pp'
+            ref_frac = default_template_settings.get("refine_fraction", 0.3)
+            coarse_frac = default_template_settings.get("coarsen_fraction", 0.05)
+            adapt_steps = default_template_settings.get("steps", 2)
+
+            default_indicator_name = f"indicator_on_{mon_var}"
+            default_marker_name = f"marker_for_{mon_var}"
+
+            adapt_moose_block.add_param("marker", default_marker_name)
+            adapt_moose_block.add_param("steps", adapt_steps)
+
+            # Default Indicator: GradientJumpIndicator on the monitored variable
+            indicators_main_sub = MooseBlock("Indicators")
+            default_indicator = MooseBlock(default_indicator_name, block_type="GradientJumpIndicator")
+            default_indicator.add_param("variable", mon_var)
+            default_indicator.add_param("outputs", "none")  # Common default
+            indicators_main_sub.add_sub_block(default_indicator)
+            adapt_moose_block.add_sub_block(indicators_main_sub)
+
+            # Default Marker: ErrorFractionMarker using the default indicator
+            markers_main_sub = MooseBlock("Markers")
+            default_marker = MooseBlock(default_marker_name, block_type="ErrorFractionMarker")
+            default_marker.add_param("indicator", default_indicator_name)
+            default_marker.add_param("refine", ref_frac)
+            default_marker.add_param("coarsen", coarse_frac)
+            default_marker.add_param("outputs", "none")  # Common default
+            markers_main_sub.add_sub_block(default_marker)
+            adapt_moose_block.add_sub_block(markers_main_sub)
+
+            print(f"Info: Applied default AMA template for variable '{mon_var}'.")
+
+        else:
+            # enable=True, but no config and no default_template_settings provided
+            # Option: apply a very basic built-in template or raise an error/warning
+            print(f"Warning: Adaptivity enabled for '{adaptivity_block_name}', but no specific 'config' or "
+                  "'default_template_settings' provided. A minimal/default AMA setup might be applied if available, "
+                  "or it might be an empty [Adaptivity] block which could be an error in MOOSE.")
+            # For a truly minimal setup, you might just set steps, but MOOSE needs a marker.
+            # Let's apply a very basic template if nothing else is given.
+            adapt_moose_block.add_param("marker", "default_marker")  # Requires a marker named 'default_marker'
+            adapt_moose_block.add_param("steps", 1)
+
+            indicators_main_sub = MooseBlock("Indicators")
+            default_indicator = MooseBlock("default_indicator", block_type="GradientJumpIndicator")
+            default_indicator.add_param("variable", "pp")  # Fallback variable
+            indicators_main_sub.add_sub_block(default_indicator)
+            adapt_moose_block.add_sub_block(indicators_main_sub)
+
+            markers_main_sub = MooseBlock("Markers")
+            default_marker = MooseBlock("default_marker", block_type="ErrorFractionMarker")
+            default_marker.add_param("indicator", "default_indicator")
+            default_marker.add_param("refine", 0.5)
+            markers_main_sub.add_sub_block(default_marker)
+            adapt_moose_block.add_sub_block(markers_main_sub)
+            print("Info: Applied a very basic fallback AMA template for variable 'pp'.")
+
+        return self
+
     def _finalize_mesh_block_renaming(self):
         """
         Adds a RenameBlockGenerator at the end of the mesh operations
@@ -674,6 +823,65 @@ class ModelBuilder:
         builder.generate_input_file(output_filepath)
         print(f"Example file with Kernels generated: {output_filepath}")
 
+    @staticmethod
+    def build_example_with_ama(output_filepath: str = "example_with_ama.i"):
+        # First, ensure AdaptivityConfig, IndicatorConfig, MarkerConfig are importable
+        # from .configs import AdaptivityConfig, IndicatorConfig, MarkerConfig
+
+        builder = ModelBuilder(project_name="ExampleWithAMA")
+
+        # 1. Define main domain (copied from a previous example for context)
+        builder.set_main_domain_parameters_2d(
+            domain_name="matrix",
+            length=1000, height=500,
+            num_elements_x=20, num_elements_y=10,  # Coarser for AMA demo
+            moose_block_id=0
+        )
+
+        # 2. Define SRV (example)
+        srv_conf = SRVConfig(name="SRVZone", length=300, height=80, center_x=500, center_y=250)
+        builder.add_srv_zone_2d(srv_config=srv_conf, target_moose_block_id=1)
+
+        # 3. Define Fracture (example)
+        frac_conf = HydraulicFractureConfig(name="MainFrac", length=200, height=0.2, center_x=500, center_y=250)
+        builder.add_hydraulic_fracture_2d(fracture_config=frac_conf, target_moose_block_id=2)
+
+        # 4. Add Variables (minimal for AMA example, assuming 'pp' is used)
+        # This part would use your actual add_variables_block method
+        # For now, let's assume a MooseBlock for Variables is created and 'pp' is defined
+        # Example:
+        # var_block = builder._get_or_create_toplevel_moose_block("Variables") # Assuming such helper
+        # pp_var = MooseBlock("pp")
+        # pp_var.add_param("initial_condition", 0)
+        # var_block.add_sub_block(pp_var)
+
+        # --- Option 1: Enable AMA using default template settings ---
+        builder.set_adaptivity_options(
+            enable=True,
+            default_template_settings={
+                "monitored_variable": "pp",  # Assuming 'pp' is the primary variable
+                "refine_fraction": 0.4,
+                "coarsen_fraction": 0.1,
+                "steps": 3
+            }
+        )
+
+        # --- Option 2: Enable AMA using a detailed AdaptivityConfig object ---
+        # Comment out Option 1 if you want to test this one, or create a separate example
+        # indicator_conf = IndicatorConfig(name="pp_gradient", type="GradientJumpIndicator", params={"variable": "pp"})
+        # marker_conf = MarkerConfig(name="pp_frac_marker", type="ErrorFractionMarker", params={"indicator": "pp_gradient", "refine": 0.5, "coarsen":0.05})
+        # custom_ama_config = AdaptivityConfig(marker_to_use="pp_frac_marker", steps=2, indicators=[indicator_conf], markers=[marker_conf])
+        # builder.set_adaptivity_options(enable=True, config=custom_ama_config)
+
+        # --- Option 3: Disable AMA ---
+        # builder.set_adaptivity_options(enable=False)
+
+        # (Add other necessary blocks like Kernels, Executioner, Outputs for a runnable sim)
+        # For this example, we focus on generating the [Adaptivity] block structure.
+
+        builder.generate_input_file(output_filepath)
+        print(f"Example file with AMA settings generated: {output_filepath}")
+
     # if __name__ == '__main__': (within ModelBuilder class, this static method would be called from outside or by other static methods)
     # This part should be outside the class definition if it's the main execution script for testing
 
@@ -686,5 +894,12 @@ if __name__ == '__main__':  # This should be at the bottom of your model_builder
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    example_kernels_output_file = os.path.join(output_dir, "example_model_with_kernels.i")
-    ModelBuilder.build_example_with_configs(example_kernels_output_file)
+    # Test example with config
+    # example_kernels_output_file = os.path.join(output_dir, "example_model_with_kernels.i")
+    # ModelBuilder.build_example_with_configs(example_kernels_output_file)
+
+    # Test AMA
+    example_ama_output_file = os.path.join(output_dir, "model_builder_ama_output.i")
+
+    # Call the static method to build and generate the file
+    ModelBuilder.build_example_with_ama(example_ama_output_file)
