@@ -678,6 +678,257 @@ class ModelBuilder:
                 mesh_moose_block.add_sub_block(rename_sub_block)
                 self._last_mesh_op_name_within_mesh_block = rename_op_name
 
+    def _get_or_create_bcs_moose_block(self) -> 'MooseBlock':
+        """
+        Retrieves the main 'BCs' MooseBlock from self._top_level_blocks,
+        or creates and adds it if it doesn't exist.
+        Internal helper method.
+        """
+        for block in self._top_level_blocks:
+            if block.block_name == "BCs":
+                # For BCs, we might want to append rather than clear,
+                # unless a method is designed to set ALL BCs at once.
+                # For now, let's assume we can add multiple BCs.
+                return block
+        # If not found, create it
+        bcs_block = MooseBlock("BCs")
+        self._top_level_blocks.append(bcs_block)
+        return bcs_block
+
+    # Custom method to generate BCs
+
+    def add_boundary_condition(self,
+                               name: str,
+                               bc_type: str,
+                               variable: str,
+                               boundary_name: Union[str, List[str]],
+                               params: Optional[Dict[str, Any]] = None) -> 'ModelBuilder':
+        """
+        Adds a single, generic boundary condition to the [BCs] block.
+
+        Args:
+            name (str): The user-chosen name for this boundary condition sub-block (e.g., "pressure_left_wall").
+            bc_type (str): The MOOSE type for the boundary condition (e.g., "DirichletBC", "FunctionNeumannBC").
+            variable (str): The variable this boundary condition applies to (e.g., "pp", "disp_x").
+            boundary_name (Union[str, List[str]]): The name(s) of the mesh boundary (sideset or nodeset)
+                                                   this BC applies to. If a list, names will be space-separated.
+            params (Optional[Dict[str, Any]], optional): A dictionary of additional parameters specific
+                                                         to this bc_type (e.g., {"value": 0.0},
+                                                         {"function": "my_func_name"}). Defaults to None.
+
+        Returns:
+            ModelBuilder: Returns self for chaining.
+        """
+        bcs_main_block = self._get_or_create_bcs_moose_block()
+
+        bc_sub_block = MooseBlock(name, block_type=bc_type)
+        bc_sub_block.add_param("variable", variable)
+
+        if isinstance(boundary_name, list):
+            bc_sub_block.add_param("boundary", ' '.join(boundary_name))
+        else:
+            bc_sub_block.add_param("boundary", boundary_name)
+
+        if params:
+            for p_name, p_val in params.items():
+                bc_sub_block.add_param(p_name, p_val)
+
+        bcs_main_block.add_sub_block(bc_sub_block)
+        print(f"Info: Added Boundary Condition '{name}'.")
+        return self
+
+    # pre defined BC generators
+
+    def add_boundary_condition(self,
+                               name: str,
+                               bc_type: str,
+                               variable: str,
+                               boundary_name: Union[str, List[str]],
+                               params: Optional[Dict[str, Any]] = None) -> 'ModelBuilder':
+        """
+        Adds a single, generic boundary condition to the [BCs] block.
+
+        Args:
+            name (str): The user-chosen name for this boundary condition sub-block (e.g., "pressure_left_wall").
+            bc_type (str): The MOOSE type for the boundary condition (e.g., "DirichletBC", "FunctionNeumannBC").
+            variable (str): The variable this boundary condition applies to (e.g., "pp", "disp_x").
+            boundary_name (Union[str, List[str]]): The name(s) of the mesh boundary (sideset or nodeset)
+                                                   this BC applies to. If a list, names will be space-separated.
+            params (Optional[Dict[str, Any]], optional): A dictionary of additional parameters specific
+                                                         to this bc_type (e.g., {"value": 0.0},
+                                                         {"function": "my_func_name"}). Defaults to None.
+
+        Returns:
+            ModelBuilder: Returns self for chaining.
+        """
+        bcs_main_block = self._get_or_create_bcs_moose_block()
+
+        bc_sub_block = MooseBlock(name, block_type=bc_type)
+        bc_sub_block.add_param("variable", variable)
+
+        if isinstance(boundary_name, list):
+            bc_sub_block.add_param("boundary", ' '.join(boundary_name))
+        else:
+            bc_sub_block.add_param("boundary", boundary_name)
+
+        if params:
+            for p_name, p_val in params.items():
+                bc_sub_block.add_param(p_name, p_val)
+
+        bcs_main_block.add_sub_block(bc_sub_block)
+        print(f"Info: Added Boundary Condition '{name}'.")
+        return self
+
+    def set_hydraulic_fracturing_bcs(self,
+                                     injection_well_boundary_name: str,
+                                     injection_pressure_function_name: str,
+                                     confine_disp_x_boundaries: Union[str, List[str]],
+                                     confine_disp_y_boundaries: Union[str, List[str]],
+                                     pressure_variable: str = "pp",
+                                     disp_x_variable: str = "disp_x",
+                                     disp_y_variable: str = "disp_y") -> 'ModelBuilder':
+        """
+        Sets up a predefined set of typical boundary conditions for a hydraulic fracturing simulation.
+        This method clears any existing BCs and adds a specific common set.
+        Consider using add_boundary_condition for more granular control.
+
+        Args:
+            injection_well_boundary_name (str): Name of the nodeset for injection well.
+            injection_pressure_function_name (str): Name of the MOOSE Function defining injection pressure.
+            confine_disp_x_boundaries (Union[str, List[str]]): Boundary name(s) for confining x-displacement.
+            confine_disp_y_boundaries (Union[str, List[str]]): Boundary name(s) for confining y-displacement.
+            pressure_variable (str, optional): Name of the pore pressure variable. Defaults to "pp".
+            disp_x_variable (str, optional): Name of the x-displacement variable. Defaults to "disp_x".
+            disp_y_variable (str, optional): Name of the y-displacement variable. Defaults to "disp_y".
+
+        Returns:
+            ModelBuilder: Returns self for chaining.
+        """
+        bcs_main_block = self._get_or_create_bcs_moose_block()
+        bcs_main_block.sub_blocks.clear()  # Start fresh for this specific set of BCs
+
+        # 1. Injection Pressure BC
+        self.add_boundary_condition(
+            name="injection_pressure",
+            bc_type="FunctionDirichletBC",
+            variable=pressure_variable,
+            boundary_name=injection_well_boundary_name,
+            params={"function": injection_pressure_function_name}
+        )
+
+        # 2. Confine X-Displacement BC
+        self.add_boundary_condition(
+            name="confinex",
+            bc_type="DirichletBC",
+            variable=disp_x_variable,
+            boundary_name=confine_disp_x_boundaries,
+            params={"value": 0}
+        )
+
+        # 3. Confine Y-Displacement BC
+        self.add_boundary_condition(
+            name="confiney",
+            bc_type="DirichletBC",
+            variable=disp_y_variable,
+            boundary_name=confine_disp_y_boundaries,
+            params={"value": 0}
+        )
+
+        print(f"Info: Set standard hydraulic fracturing BCs using predefined set.")
+        return self
+
+    def _get_or_create_user_objects_moose_block(self) -> 'MooseBlock':
+        """
+        Retrieves the main 'UserObjects' MooseBlock from self._top_level_blocks,
+        or creates and adds it if it doesn't exist.
+        Internal helper method.
+        """
+        for block in self._top_level_blocks:
+            if block.block_name == "UserObjects":
+                return block
+        # If not found, create it
+        uo_block = MooseBlock("UserObjects")
+        self._top_level_blocks.append(uo_block)
+        return uo_block
+
+    def set_porous_flow_dictator(self,
+                                 dictator_name: str = "dictator",
+                                 porous_flow_variables: Union[str, List[str]] = "pp",
+                                 num_fluid_phases: int = 1,
+                                 num_fluid_components: int = 1,
+                                 **other_params) -> 'ModelBuilder':
+        """
+        Sets up the PorousFlowDictator UserObject with common parameters.
+        If a UserObject with 'dictator_name' already exists, it will be replaced.
+
+        Args:
+            dictator_name (str, optional): Name for the PorousFlowDictator. Defaults to "dictator".
+            porous_flow_variables (Union[str, List[str]], optional): Variable(s) governed by PorousFlow.
+                                                                    Defaults to "pp".
+            num_fluid_phases (int, optional): Number of fluid phases. Defaults to 1.
+            num_fluid_components (int, optional): Number of fluid components. Defaults to 1.
+            **other_params: Additional parameters for the PorousFlowDictator.
+
+        Returns:
+            ModelBuilder: Returns self for chaining.
+        """
+        uo_main_block = self._get_or_create_user_objects_moose_block()
+
+        # Remove existing dictator with the same name to replace it
+        uo_main_block.sub_blocks = [
+            sb for sb in uo_main_block.sub_blocks if sb.block_name != dictator_name
+        ]
+
+        vars_str = ' '.join(porous_flow_variables) if isinstance(porous_flow_variables, list) else porous_flow_variables
+
+        params = {
+            "porous_flow_vars": vars_str,
+            "number_fluid_phases": num_fluid_phases,
+            "number_fluid_components": num_fluid_components,
+            **other_params
+        }
+
+        dictator_obj = MooseBlock(dictator_name, block_type="PorousFlowDictator")
+        for p_name, p_val in params.items():
+            dictator_obj.add_param(p_name, p_val)
+
+        uo_main_block.add_sub_block(dictator_obj)
+        print(f"Info: Set PorousFlowDictator '{dictator_name}'.")
+        return self
+
+    def add_user_object(self,
+                        name: str,
+                        uo_type: str,
+                        params: Optional[Dict[str, Any]] = None) -> 'ModelBuilder':
+        """
+        Adds a single, generic UserObject to the [UserObjects] block.
+        If a UserObject with the same 'name' already exists, it will be replaced.
+
+        Args:
+            name (str): The user-chosen name for this UserObject sub-block.
+            uo_type (str): The MOOSE type for the UserObject.
+            params (Optional[Dict[str, Any]], optional): A dictionary of parameters specific
+                                                         to this uo_type. Defaults to None.
+
+        Returns:
+            ModelBuilder: Returns self for chaining.
+        """
+        uo_main_block = self._get_or_create_user_objects_moose_block()
+
+        # Remove existing UO with the same name to replace it
+        uo_main_block.sub_blocks = [
+            sb for sb in uo_main_block.sub_blocks if sb.block_name != name
+        ]
+
+        uo_sub_block = MooseBlock(name, block_type=uo_type)
+        if params:
+            for p_name, p_val in params.items():
+                uo_sub_block.add_param(p_name, p_val)
+
+        uo_main_block.add_sub_block(uo_sub_block)
+        print(f"Info: Added/Updated UserObject '{name}'.")
+        return self
+
     # --- File Generation ---
     def generate_input_file(self, output_filepath: str):
         """
@@ -882,8 +1133,122 @@ class ModelBuilder:
         builder.generate_input_file(output_filepath)
         print(f"Example file with AMA settings generated: {output_filepath}")
 
-    # if __name__ == '__main__': (within ModelBuilder class, this static method would be called from outside or by other static methods)
-    # This part should be outside the class definition if it's the main execution script for testing
+    @staticmethod
+    def build_example_with_bcs_uos(output_filepath: str = "example_with_bcs_uos.i"):
+        # This static method demonstrates the set_hydraulic_fracturing_bcs (scenario-specific)
+        builder = ModelBuilder(project_name="ExampleWithScenarioBCsAndUOs")
+
+        builder.set_main_domain_parameters_2d(
+            domain_name="matrix", length=1000, height=500,
+            num_elements_x=20, num_elements_y=10, moose_block_id=0
+        )
+        builder.add_nodeset_by_coord(
+            nodeset_op_name="injection_point_nodes", new_boundary_name="injection_well",
+            coordinates=(500, 250)
+        )
+        builder.set_hydraulic_fracturing_bcs(
+            injection_well_boundary_name="injection_well",
+            injection_pressure_function_name="pres_func",
+            confine_disp_x_boundaries=["left", "right"],
+            confine_disp_y_boundaries=["top", "bottom"],
+        )
+        builder.set_porous_flow_dictator(porous_flow_variables="pp")
+        builder.generate_input_file(output_filepath)
+        print(f"Example file with scenario BCs and UserObjects generated: {output_filepath}")
+
+    @staticmethod
+    def build_example_with_individual_bcs(output_filepath: str = "example_with_individual_bcs.i"):
+        # This new static method demonstrates the generic add_boundary_condition
+        builder = ModelBuilder(project_name="ExampleWithIndividualBCsAndUOs")
+
+        # 1. Define main domain
+        builder.set_main_domain_parameters_2d(
+            domain_name="matrix", length=1000, height=500,
+            num_elements_x=20, num_elements_y=10, moose_block_id=0
+        )
+        # Assume sidesets 'left', 'right', 'top', 'bottom' are known.
+
+        # 2. Add nodeset for injection
+        builder.add_nodeset_by_coord(
+            nodeset_op_name="injection_point_nodes", new_boundary_name="injection_well",
+            coordinates=(500, 250)
+        )
+        # Optionally, add a production point nodeset
+        builder.add_nodeset_by_coord(
+            nodeset_op_name="production_point_nodes", new_boundary_name="production_well",
+            coordinates=(700, 250)  # Example coordinates
+        )
+
+        # 3. Add Boundary Conditions one by one using the generic method
+        # Injection pressure
+        builder.add_boundary_condition(
+            name="injection_pressure_bc",
+            bc_type="FunctionDirichletBC",
+            variable="pp",  # Assuming 'pp' variable
+            boundary_name="injection_well",
+            params={"function": "pres_func"}  # Assumes 'pres_func' will be defined in [Functions]
+        )
+        # Confine x-displacement on left and right boundaries
+        builder.add_boundary_condition(
+            name="confine_disp_x_lr",
+            bc_type="DirichletBC",
+            variable="disp_x",  # Assuming 'disp_x' variable
+            boundary_name=["left", "right"],  # Apply to multiple boundaries
+            params={"value": 0}
+        )
+        # Confine y-displacement on top boundary
+        builder.add_boundary_condition(
+            name="confine_disp_y_top",
+            bc_type="DirichletBC",
+            variable="disp_y",  # Assuming 'disp_y' variable
+            boundary_name="top",
+            params={"value": 0}
+        )
+        # Example: No-flow (zero Neumann) on bottom boundary for pressure
+        # builder.add_boundary_condition(
+        #     name="no_flow_bottom",
+        #     bc_type="NeumannBC",
+        #     variable="pp",
+        #     boundary_name="bottom",
+        #     params={"value": 0.0}
+        # )
+
+        # 4. Set PorousFlowDictator UserObject (using the specific method or generic add_user_object)
+        builder.set_porous_flow_dictator(
+            porous_flow_variables="pp",
+            num_fluid_phases=1,
+            num_fluid_components=1
+        )
+        # Alternatively, using the generic method:
+        # builder.add_user_object(
+        #     name="dictator",
+        #     uo_type="PorousFlowDictator",
+        #     params={
+        #         "porous_flow_vars": "pp",
+        #         "number_fluid_phases": 1,
+        #         "number_fluid_components": 1
+        #     }
+        # )
+
+        # (Placeholder for adding Variables, Functions, Kernels etc. for a runnable simulation)
+        # Example: Add a placeholder for Variables and Functions to make the output more complete
+        # This would use actual methods like add_variables_block, add_functions_block
+
+        # Placeholder Variables block
+        # vars_block_obj = builder._get_or_create_toplevel_moose_block("Variables") # Assuming such helper
+        # pp_var = MooseBlock("pp"); vars_block_obj.add_sub_block(pp_var)
+        # dx_var = MooseBlock("disp_x"); vars_block_obj.add_sub_block(dx_var)
+        # dy_var = MooseBlock("disp_y"); vars_block_obj.add_sub_block(dy_var)
+
+        # Placeholder Functions block (for pres_func)
+        # funcs_block_obj = builder._get_or_create_toplevel_moose_block("Functions")
+        # pres_func_obj = MooseBlock("pres_func", block_type="ParsedFunction")
+        # pres_func_obj.add_param("expression", "1.0e6 * t") # Dummy expression
+        # funcs_block_obj.add_sub_block(pres_func_obj)
+
+        builder.generate_input_file(output_filepath)
+        print(f"Example file with individual BCs and UserObjects settings generated: {output_filepath}")
+
 
 if __name__ == '__main__':  # This should be at the bottom of your model_builder.py file
     import os
@@ -899,7 +1264,17 @@ if __name__ == '__main__':  # This should be at the bottom of your model_builder
     # ModelBuilder.build_example_with_configs(example_kernels_output_file)
 
     # Test AMA
-    example_ama_output_file = os.path.join(output_dir, "model_builder_ama_output.i")
+    # example_ama_output_file = os.path.join(output_dir, "model_builder_ama_output.i")
+    #
+    # # Call the static method to build and generate the file
+    # ModelBuilder.build_example_with_ama(example_ama_output_file)
 
-    # Call the static method to build and generate the file
-    ModelBuilder.build_example_with_ama(example_ama_output_file)
+    # Test the scenario-specific BCs setup
+    example_scenario_bcs_output_file = os.path.join(output_dir, "model_builder_scenario_bcs_uos_output.i")
+    ModelBuilder.build_example_with_bcs_uos(example_scenario_bcs_output_file)
+
+    print("-" * 30)
+
+    # Test the individual BCs setup
+    example_individual_bcs_output_file = os.path.join(output_dir, "model_builder_individual_bcs_uos_output.i")
+    ModelBuilder.build_example_with_individual_bcs(example_individual_bcs_output_file)
