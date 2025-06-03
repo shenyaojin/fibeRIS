@@ -6,7 +6,8 @@
 from typing import List, Dict, Any, Union, Tuple, Optional
 
 # Import config classes and lower-level MooseBlock class.
-from fiberis.moose.config import HydraulicFractureConfig, SRVConfig, AdaptivityConfig
+from fiberis.moose.config import HydraulicFractureConfig, SRVConfig, AdaptivityConfig, \
+    PointValueSamplerConfig, LineValueSamplerConfig, PostprocessorConfigBase
 from fiberis.moose.input_generator import MooseBlock
 
 
@@ -929,11 +930,74 @@ class ModelBuilder:
         print(f"Info: Added/Updated UserObject '{name}'.")
         return self
 
+    def _get_or_create_postprocessors_moose_block(self) -> 'MooseBlock':
+        """
+        Retrieves the main 'Postprocessors' MooseBlock from self._top_level_blocks,
+        or creates and adds it if it doesn't exist.
+        Internal helper method.
+        """
+        for block in self._top_level_blocks:
+            if block.block_name == "Postprocessors":
+                return block
+        # If not found, create it
+        pp_block = MooseBlock("Postprocessors")
+        self._top_level_blocks.append(pp_block)
+        return pp_block
+
+    def add_postprocessor(self,
+                          config: 'PostprocessorConfigBase') -> 'ModelBuilder':  # Use forward reference for PostprocessorConfigBase
+        """
+        Adds a single postprocessor to the [Postprocessors] block based on the provided config object.
+
+        Args:
+            config (PostprocessorConfigBase): A configuration object derived from PostprocessorConfigBase
+                                              (e.g., PointValueSamplerConfig, LineValueSamplerConfig).
+
+        Returns:
+            ModelBuilder: Returns self for chaining.
+        """
+        if not isinstance(config, PostprocessorConfigBase):  # Ensure PostprocessorConfigBase is imported
+            raise TypeError("config must be an instance of a class derived from PostprocessorConfigBase.")
+
+        pp_main_block = self._get_or_create_postprocessors_moose_block()
+
+        # Create the sub-block for this specific postprocessor
+        pp_sub_block = MooseBlock(config.name, block_type=config.pp_type)
+
+        # Add common parameters from PostprocessorConfigBase
+        if config.execute_on:
+            exec_on_str = ' '.join(config.execute_on) if isinstance(config.execute_on, list) else config.execute_on
+            pp_sub_block.add_param("execute_on", exec_on_str)
+
+        if config.variable:
+            pp_sub_block.add_param("variable", config.variable)
+
+        if config.variables:  # For postprocessors that take a list of variables
+            pp_sub_block.add_param("variables", ' '.join(config.variables))  # MOOSE usually expects space-separated
+
+        # Add type-specific parameters by checking the instance type
+        if isinstance(config, PointValueSamplerConfig):  # Ensure PointValueSamplerConfig is imported
+            if config.point:  # point is mandatory for PointValueSamplerConfig as per its __init__
+                pp_sub_block.add_param("point", config.point)
+
+        # For LineValueSamplerConfig, its specific parameters (start_point, end_point, num_points, etc.)
+        # are already placed into its 'other_params' dictionary by its __init__ method.
+        # So, they will be handled by the loop below.
+
+        # Add all parameters from the 'other_params' dictionary
+        if config.other_params:
+            for p_name, p_val in config.other_params.items():
+                pp_sub_block.add_param(p_name, p_val)
+
+        pp_main_block.add_sub_block(pp_sub_block)
+        print(f"Info: Added Postprocessor '{config.name}' of type '{config.pp_type}'.")
+        return self
+
     # --- File Generation ---
     def generate_input_file(self, output_filepath: str):
         """
         Generates the MOOSE input file by rendering all top-level MooseBlock objects.
-        Currently, this will primarily render the [Mesh] block.
+        This will render all the blocks in self._top_level_blocks.
         """
         self._finalize_mesh_block_renaming()  # Ensure renaming is the last mesh operation
 
@@ -1249,6 +1313,79 @@ class ModelBuilder:
         builder.generate_input_file(output_filepath)
         print(f"Example file with individual BCs and UserObjects settings generated: {output_filepath}")
 
+    @staticmethod
+    def build_example_with_postprocessors(output_filepath: str = "example_with_pps.i"):
+        # Ensure config classes are importable here if not globally
+        # from .configs import PointValueSamplerConfig, LineValueSamplerConfig, HydraulicFractureConfig, SRVConfig
+
+        builder = ModelBuilder(project_name="ExampleWithPostprocessors")
+
+        # 1. Define main domain (example setup)
+        builder.set_main_domain_parameters_2d(
+            domain_name="matrix",
+            length=1000, height=500,
+            num_elements_x=20, num_elements_y=10,
+            moose_block_id=0
+        )
+        # 2. Add a nodeset for injection (example setup)
+        builder.add_nodeset_by_coord(
+            nodeset_op_name="injection_point_nodes",
+            new_boundary_name="injection_well",
+            coordinates=(500.0, 0.0, 0.0)  # Using 3D coord for consistency with PointValue
+        )
+        builder.add_nodeset_by_coord(
+            nodeset_op_name="production_point_nodes",
+            new_boundary_name="production_well",
+            coordinates=(610.0, 0.0, 0.0)
+        )
+        # Example monitoring points (assuming 2D, z=0 for PointValue)
+        monitor_points_coords = [
+            (435.0, 5.0, 0.0), (545.0, 2.0, 0.0), (545.0, 5.0, 0.0),
+            (545.0, 10.0, 0.0), (545.0, 50.0, 0.0), (545.0, 200.0, 0.0),
+            (435.0, 2.0, 0.0)
+        ]
+
+        # (Placeholder: Add Variables block and define 'pp', 'strain_yy', 'diffusivity')
+        # builder.add_variables_block(...)
+        # This is crucial for postprocessors to work.
+
+        # 3. Add Postprocessors using the new config classes
+
+        # PointValue samplers for 'pp'
+        builder.add_postprocessor(PointValueSamplerConfig(name="pp_inj", variable="pp", point=(500.0, 0.0, 0.0)))
+        builder.add_postprocessor(PointValueSamplerConfig(name="pp_prod", variable="pp", point=(610.0, 0.0, 0.0)))
+        for i, coord in enumerate(monitor_points_coords):
+            builder.add_postprocessor(
+                PointValueSamplerConfig(name=f"pp_mon{i + 1}", variable="pp", point=coord)
+            )
+
+        # PointValue samplers for 'strain_yy'
+        builder.add_postprocessor(
+            PointValueSamplerConfig(name="strain_yy_inj", variable="strain_yy", point=(500.0, 0.0, 0.0)))
+        builder.add_postprocessor(
+            PointValueSamplerConfig(name="strain_yy_prod", variable="strain_yy", point=(610.0, 0.0, 0.0)))
+
+        # PointValue sampler for 'diffusivity'
+        builder.add_postprocessor(
+            PointValueSamplerConfig(name="diff_inj", variable="diffusivity", point=(500.0, 0.0, 0.0)))
+
+        # Example LineValueSampler
+        builder.add_postprocessor(LineValueSamplerConfig(
+            name="pressure_profile_x_axis",
+            variable="pp",
+            start_point=(0.0, 0.0, 0.0),
+            end_point=(1000.0, 0.0, 0.0),
+            num_points=51,
+            output_vector=True,  # To get CSV output of all points
+            execute_on="timestep_end"
+        ))
+
+        # (Add other necessary blocks like Kernels, Functions, BCs, Executioner, Outputs
+        #  for a runnable simulation.)
+
+        builder.generate_input_file(output_filepath)
+        print(f"Example file with Postprocessors generated: {output_filepath}")
+
 
 if __name__ == '__main__':  # This should be at the bottom of your model_builder.py file
     import os
@@ -1259,22 +1396,28 @@ if __name__ == '__main__':  # This should be at the bottom of your model_builder
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    # Test example with config
+    # 1. Test example with config
     # example_kernels_output_file = os.path.join(output_dir, "example_model_with_kernels.i")
     # ModelBuilder.build_example_with_configs(example_kernels_output_file)
 
-    # Test AMA
+    # 2. Test AMA
     # example_ama_output_file = os.path.join(output_dir, "model_builder_ama_output.i")
     #
     # # Call the static method to build and generate the file
     # ModelBuilder.build_example_with_ama(example_ama_output_file)
 
-    # Test the scenario-specific BCs setup
-    example_scenario_bcs_output_file = os.path.join(output_dir, "model_builder_scenario_bcs_uos_output.i")
-    ModelBuilder.build_example_with_bcs_uos(example_scenario_bcs_output_file)
+    # 3. Test the scenario-specific BCs setup
+    # example_scenario_bcs_output_file = os.path.join(output_dir, "model_builder_scenario_bcs_uos_output.i")
+    # ModelBuilder.build_example_with_bcs_uos(example_scenario_bcs_output_file)
+    #
+    # print("-" * 30)
+    #
+    # # Test the individual BCs setup
+    # example_individual_bcs_output_file = os.path.join(output_dir, "model_builder_individual_bcs_uos_output.i")
+    # ModelBuilder.build_example_with_individual_bcs(example_individual_bcs_output_file)
 
-    print("-" * 30)
+    # 4. Test Postprocessors
+    example_pps_output_file = os.path.join(output_dir, "model_builder_postprocessors_output.i")
 
-    # Test the individual BCs setup
-    example_individual_bcs_output_file = os.path.join(output_dir, "model_builder_individual_bcs_uos_output.i")
-    ModelBuilder.build_example_with_individual_bcs(example_individual_bcs_output_file)
+    # Call the static method to build and generate the file
+    ModelBuilder.build_example_with_postprocessors(example_pps_output_file)

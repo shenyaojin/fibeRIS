@@ -183,85 +183,134 @@ class AdaptivityConfig:
             raise TypeError("marker_config must be an instance of MarkerConfig.")
         self.markers.append(marker_config)
 
-class PostprocessorConfig:
+
+class PostprocessorConfigBase:
     """
-    Configuration for a single Postprocessor in the MOOSE [Postprocessors] block.
-    This class aims to be flexible enough to define various types of postprocessors.
+    Base configuration class for a MOOSE Postprocessor.
     """
 
     def __init__(self,
                  name: str,
-                 pp_type: str,
+                 pp_type: str,  # MOOSE type of the postprocessor
                  execute_on: Optional[Union[str, List[str]]] = None,
-                 variable: Optional[str] = None,
-                 variables: Optional[List[str]] = None,
-                 block: Optional[Union[str, int, List[Union[str, int]]]] = None,  # Can be name or ID
-                 boundary: Optional[Union[str, int, List[Union[str, int]]]] = None,  # Can be name or ID
-                 nodeset: Optional[Union[str, int, List[Union[str, int]]]] = None,  # Can be name or ID
-                 point: Optional[Union[Tuple[float, ...], str]] = None,
-                 # For PointValue, e.g., (x,y) or (x,y,z) or "x y z"
-                 points: Optional[List[Union[Tuple[float, ...], str]]] = None,  # For VectorPointValueSampler
-                 output_file: Optional[str] = None,  # For some vector postprocessors
+                 variable: Optional[str] = None,  # For postprocessors operating on a single variable
+                 variables: Optional[List[str]] = None,  # For postprocessors operating on multiple variables
                  other_params: Optional[Dict[str, Any]] = None):
         """
-        Initializes a PostprocessorConfig object.
+        Initializes the base configuration for a postprocessor.
 
         Args:
-            name (str): The user-chosen name for this postprocessor sub-block.
-                        This name is how the postprocessor is identified in outputs (e.g., CSV headers).
-            pp_type (str): The MOOSE type for the postprocessor (e.g., "PointValue",
-                           "ElementAverageValue", "VectorPointValueSampler").
-            execute_on (Optional[Union[str, List[str]]], optional):
-                When this postprocessor should execute. Can be a single string (e.g., "initial timestep_end final")
-                or a list of MOOSE execution flags (e.g., ["initial", "timestep_end", "final"]).
+            name (str): The user-chosen name for this postprocessor.
+            pp_type (str): The MOOSE type string for the postprocessor.
+            execute_on (Optional[Union[str, List[str]]], optional): When to execute.
                 Defaults to None (MOOSE default, often 'timestep_end').
-            variable (Optional[str], optional): The single variable this postprocessor operates on.
-                                                Used by many scalar postprocessors. Defaults to None.
-            variables (Optional[List[str]], optional): A list of variables for postprocessors
-                                                       that operate on multiple variables (e.g., VectorPointValueSampler).
-                                                       Defaults to None.
-            block (Optional[Union[str, int, List[Union[str, int]]]], optional):
-                The block name(s) or ID(s) this postprocessor applies to. Defaults to None.
-            boundary (Optional[Union[str, int, List[Union[str, int]]]], optional):
-                The boundary name(s) or ID(s) (sideset) this postprocessor applies to. Defaults to None.
-            nodeset (Optional[Union[str, int, List[Union[str, int]]]], optional):
-                The nodeset name(s) or ID(s) this postprocessor applies to. Defaults to None.
-            point (Optional[Union[Tuple[float, ...], str]], optional):
-                Coordinates for point-based postprocessors like "PointValue".
-                Can be a tuple (x,y) or (x,y,z) or a space-separated string "x y z". Defaults to None.
-            points (Optional[List[Union[Tuple[float, ...], str]]], optional):
-                A list of points for postprocessors like "VectorPointValueSampler".
-                Each point can be a tuple or a string. Defaults to None.
-            output_file (Optional[str], optional):
-                For vector postprocessors or others that can write to a specific file. Defaults to None.
-            other_params (Optional[Dict[str, Any]], optional):
-                A dictionary for any other parameters specific to the 'pp_type' not covered above.
-                Defaults to None.
+            variable (Optional[str], optional): Single variable to operate on. Defaults to None.
+            variables (Optional[List[str]], optional): List of variables to operate on. Defaults to None.
+            other_params (Optional[Dict[str, Any]], optional): Dictionary for any other specific parameters.
+                                                               Defaults to None.
         """
         self.name: str = name
-        self.pp_type: str = pp_type
+        self.pp_type: str = pp_type  # This will be set by derived classes typically
         self.execute_on: Optional[Union[str, List[str]]] = execute_on
         self.variable: Optional[str] = variable
         self.variables: Optional[List[str]] = variables
-        self.block: Optional[Union[str, int, List[Union[str, int]]]] = block
-        self.boundary: Optional[Union[str, int, List[Union[str, int]]]] = boundary
-        self.nodeset: Optional[Union[str, int, List[Union[str, int]]]] = nodeset
-
-        # Ensure point and points are stored as MOOSE-compatible strings if provided as tuples
-        if point is not None and not isinstance(point, str):
-            self.point: Optional[str] = ' '.join(map(str, point))
-        else:
-            self.point: Optional[str] = point  # type: ignore
-
-        if points is not None:
-            self.points: Optional[List[str]] = [
-                ' '.join(map(str, p)) if not isinstance(p, str) else p for p in points
-            ]
-        else:
-            self.points: Optional[List[str]] = None
-
-        self.output_file: Optional[str] = output_file
         self.other_params: Dict[str, Any] = other_params if other_params is not None else {}
+
+
+class PointValueSamplerConfig(PostprocessorConfigBase):
+    """
+    Configuration for a 'PointValue' or similar point-based scalar MOOSE Postprocessor.
+    """
+
+    def __init__(self,
+                 name: str,
+                 variable: str,  # PointValue typically operates on a single variable
+                 point: Union[Tuple[float, ...], str],  # (x,y) or (x,y,z) or "x y z"
+                 execute_on: Optional[Union[str, List[str]]] = None,
+                 other_params: Optional[Dict[str, Any]] = None):
+        """
+        Initializes a PointValueSamplerConfig object.
+
+        Args:
+            name (str): Name for this postprocessor.
+            variable (str): The variable to sample.
+            point (Union[Tuple[float, ...], str]): Coordinates of the point to sample.
+            execute_on (Optional[Union[str, List[str]]], optional): When to execute.
+            other_params (Optional[Dict[str, Any]], optional): Additional parameters.
+        """
+        super().__init__(name=name,
+                         pp_type="PointValue",  # MOOSE type for this specific config
+                         execute_on=execute_on,
+                         variable=variable,
+                         other_params=other_params)
+
+        if not isinstance(point, str):
+            self.point: str = ' '.join(map(str, point))
+        else:
+            self.point: str = point
+
+
+class LineValueSamplerConfig(PostprocessorConfigBase):
+    """
+    Configuration for a 'LineValueSampler' MOOSE Postprocessor.
+    This can output scalar statistics (min, max, avg) or a vector of values along the line.
+    """
+
+    def __init__(self,
+                 name: str,
+                 variable: str,
+                 start_point: Union[Tuple[float, ...], str],
+                 end_point: Union[Tuple[float, ...], str],
+                 num_points: int = 100,  # Default number of sample points on the line
+                 output_vector: bool = False,  # If true, configures for vector output (e.g., to CSV)
+                 execute_on: Optional[Union[str, List[str]]] = None,
+                 other_params: Optional[Dict[str, Any]] = None):
+        """
+        Initializes a LineValueSamplerConfig object.
+
+        Args:
+            name (str): Name for this postprocessor.
+            variable (str): The variable to sample along the line.
+            start_point (Union[Tuple[float, ...], str]): Start coordinates of the line.
+            end_point (Union[Tuple[float, ...], str]): End coordinates of the line.
+            num_points (int, optional): Number of points to sample along the line. Defaults to 100.
+            output_vector (bool, optional): If True, sets 'output_vector_postprocessor = true'
+                                            in other_params, typically for CSV output of all points.
+                                            Otherwise, it might output scalar stats like min/max/avg.
+                                            Defaults to False.
+            execute_on (Optional[Union[str, List[str]]], optional): When to execute.
+            other_params (Optional[Dict[str, Any]], optional): Additional parameters.
+        """
+        # Initialize other_params first if it's None
+        current_other_params = other_params if other_params is not None else {}
+
+        # Add LineValueSampler specific parameters to other_params
+        if not isinstance(start_point, str):
+            current_other_params["start_point"] = ' '.join(map(str, start_point))
+        else:
+            current_other_params["start_point"] = start_point
+
+        if not isinstance(end_point, str):
+            current_other_params["end_point"] = ' '.join(map(str, end_point))
+        else:
+            current_other_params["end_point"] = end_point
+
+        current_other_params["num_points"] = num_points
+
+        if output_vector:
+            current_other_params["output_vector_postprocessor"] = True  # MOOSE boolean
+
+        super().__init__(name=name,
+                         pp_type="LineValueSampler",  # MOOSE type
+                         execute_on=execute_on,
+                         variable=variable,
+                         other_params=current_other_params)
+
+        # Make these accessible as direct attributes as well for clarity, though they are in other_params
+        self.start_point_str: str = current_other_params["start_point"]
+        self.end_point_str: str = current_other_params["end_point"]
+        self.num_sample_points: int = num_points
+
 
 if __name__ == '__main__':
     # Example usage of the new AMA configuration classes:
