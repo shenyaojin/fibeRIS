@@ -3,6 +3,7 @@
 # Shenyao Jin, 5/18/2025, shenyaojin@mines.edu
 # This script is part of the fibeRIS project, which is licensed under the WTFPL (https://opensource.org/licenses/WTFPL).
 # There are some issues with meshio and MOOSE Exodus II files, especially with the time steps.
+# Don't mix this with model builder's postprocessor which is a top module block for ".i" input files.
 import meshio
 import numpy as np
 from scipy.spatial import KDTree  # For finding nearest neighbors

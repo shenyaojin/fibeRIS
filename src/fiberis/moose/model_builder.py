@@ -9,7 +9,8 @@ from typing import List, Dict, Any, Union, Tuple, Optional
 from fiberis.moose.config import HydraulicFractureConfig, SRVConfig, AdaptivityConfig, \
     PointValueSamplerConfig, LineValueSamplerConfig, PostprocessorConfigBase
 from fiberis.moose.input_generator import MooseBlock
-
+# Import data format in fiberis module
+from fiberis.analyzer.Data1D import core1D # Core function for
 
 class ModelBuilder:
     """
@@ -993,6 +994,86 @@ class ModelBuilder:
         print(f"Info: Added Postprocessor '{config.name}' of type '{config.pp_type}'.")
         return self
 
+    def _get_or_create_functions_moose_block(self) -> 'MooseBlock':
+        """
+        Retrieves the main 'Functions' MooseBlock from self._top_level_blocks,
+        or creates and adds it if it doesn't exist.
+        Internal helper method.
+        """
+        for block in self._top_level_blocks:
+            if block.block_name == "Functions":
+                return block
+        # If not found, create it
+        functions_block = MooseBlock("Functions")
+        self._top_level_blocks.append(functions_block)
+        return functions_block
+
+    def add_piecewise_function_from_data1d(self,
+                                           name: str,
+                                           source_data1d: 'core1D.Data1D',
+                                           other_params: Optional[Dict[str, Any]] = None) -> 'ModelBuilder':
+        """
+        Adds a PiecewiseConstant function to the [Functions] block,
+        using data from a fiberis Data1D object (or its subclasses).
+
+        The method assumes Data1D.taxis and Data1D.data are numpy arrays and
+        will be converted to lists for MOOSE's PiecewiseConstant 'x' and 'y' parameters.
+        It's assumed that Data1D.taxis represents the time points and Data1D.data
+        represents the corresponding function values, and that their lengths match
+        MOOSE's expectation for PiecewiseConstant (typically same length).
+
+        Args:
+            name (str): The user-chosen name for this MOOSE function sub-block
+                        (e.g., "injection_rate_history").
+            source_data1d (Data1D): An instance of the fiberis Data1D class (or its subclasses)
+                                    containing the time-series data.
+            other_params (Optional[Dict[str, Any]], optional): A dictionary for any other parameters
+                                                               specific to PiecewiseConstant
+                                                               (e.g., {"fill_value": "NEAREST"}).
+                                                               Defaults to None.
+
+        Returns:
+            ModelBuilder: Returns self for chaining.
+        """
+        if not isinstance(source_data1d, core1D.Data1D):
+            raise TypeError(f"source_data1d for function '{name}' must be an instance of Data1D or its subclass.")
+
+        functions_main_block = self._get_or_create_functions_moose_block()
+
+        if source_data1d.taxis is None or source_data1d.data is None:
+            raise ValueError(f"Data1D object '{source_data1d.name or 'Unnamed'}' for function '{name}' "
+                             "must have both 'taxis' and 'data' arrays defined.")
+
+        # Convert numpy arrays from Data1D to Python lists,
+        # as MooseBlock._format_value handles lists well for space-separated string conversion.
+        x_values_for_moose = list(source_data1d.taxis)
+        y_values_for_moose = list(source_data1d.data)
+
+        if len(x_values_for_moose) != len(y_values_for_moose):
+            # MOOSE's PiecewiseConstant often expects x and y to be the same length.
+            # If x has N points and y has N points, y[i] is value for x[i] <= t < x[i+1]
+            # and y[N-1] is for t >= x[N-1].
+            # Or, if y has N-1 points, y[i] is for x[i] <= t < x[i+1].
+            # The user of Data1D should ensure their taxis and data align with MOOSE's expectation.
+            # For now, we'll just pass them as is and let MOOSE handle it or error out if lengths are problematic.
+            print(f"Warning for PiecewiseConstant Function '{name}': "
+                  f"Length of taxis ({len(x_values_for_moose)}) and data ({len(y_values_for_moose)}) "
+                  f"from Data1D object '{source_data1d.name or 'Unnamed'}' are different ({len(x_values_for_moose)} vs {len(y_values_for_moose)}). "
+                  "Ensure this aligns with MOOSE's expectations for PiecewiseConstant's 'x' and 'y' parameters.")
+
+        func_sub_block = MooseBlock(name, block_type="PiecewiseConstant")
+        func_sub_block.add_param("x", x_values_for_moose)
+        func_sub_block.add_param("y", y_values_for_moose)
+
+        if other_params:
+            for p_name, p_val in other_params.items():
+                func_sub_block.add_param(p_name, p_val)
+
+        functions_main_block.add_sub_block(func_sub_block)
+        print(
+            f"Info: Added PiecewiseConstant Function '{name}' from Data1D source '{source_data1d.name or 'Unnamed'}'.")
+        return self
+
     # --- File Generation ---
     def generate_input_file(self, output_filepath: str):
         """
@@ -1386,6 +1467,49 @@ class ModelBuilder:
         builder.generate_input_file(output_filepath)
         print(f"Example file with Postprocessors generated: {output_filepath}")
 
+    @staticmethod
+    def build_example_with_data1d_functions(output_filepath: str = "example_with_data1d_funcs.i"):
+        import numpy as np
+        from fiberis.analyzer.Data1D import core1D
+        # Ensure Data1D is importable here if not globally
+        builder = ModelBuilder(project_name="ExampleWithData1DFunctions")
+
+        # 1. Define main domain (minimal for this example)
+        builder.set_main_domain_parameters_2d(
+            domain_name="matrix", length=100, height=100,
+            num_elements_x=2, num_elements_y=2
+        )
+
+        # 2. Create fiberis Data1D objects
+        time_pts1 = np.array([0.0, 10.0, 20.0, 30.0, 40.0])
+        pressure_values = np.array([1.0e6, 1.5e6, 2.0e6, 1.8e6, 1.0e6])  # Example pressure in Pa
+        pressure_data1d = core1D.Data1D(taxis=time_pts1, data=pressure_values, name="InjectionPressureSchedule")
+
+        time_pts2 = np.array([0.0, 5.0, 15.0, 25.0, 35.0, 40.0])
+        rate_values = np.array([0.001, 0.002, 0.0025, 0.0015, 0.0005, 0.0005])  # Example rate m3/s
+        rate_data1d = core1D.Data1D(taxis=time_pts2, data=rate_values, name="InjectionRate")
+
+        # 3. Add PiecewiseConstant functions to MOOSE using Data1D objects
+        builder.add_piecewise_function_from_data1d(
+            name="pressure_func_from_data1d",
+            source_data1d=pressure_data1d
+        )
+
+        builder.add_piecewise_function_from_data1d(
+            name="rate_func_from_data1d",
+            source_data1d=rate_data1d,
+            other_params={"fill_value": "NEAREST"}  # Example of an optional parameter
+        )
+
+        # (Add other necessary blocks like Variables, Kernels, BCs, Executioner, Outputs
+        #  for a runnable simulation that might use these functions.)
+
+        # Example: Add a placeholder Variables block
+        # vars_block_obj = builder._get_or_create_toplevel_moose_block("Variables")
+        # pp_var = MooseBlock("pp"); vars_block_obj.add_sub_block(pp_var)
+
+        builder.generate_input_file(output_filepath)
+        print(f"Example file with Functions from Data1D generated: {output_filepath}")
 
 if __name__ == '__main__':  # This should be at the bottom of your model_builder.py file
     import os
@@ -1416,8 +1540,14 @@ if __name__ == '__main__':  # This should be at the bottom of your model_builder
     # example_individual_bcs_output_file = os.path.join(output_dir, "model_builder_individual_bcs_uos_output.i")
     # ModelBuilder.build_example_with_individual_bcs(example_individual_bcs_output_file)
 
-    # 4. Test Postprocessors
-    example_pps_output_file = os.path.join(output_dir, "model_builder_postprocessors_output.i")
+    # # 4. Test Postprocessors
+    # example_pps_output_file = os.path.join(output_dir, "model_builder_postprocessors_output.i")
+    #
+    # # Call the static method to build and generate the file
+    # ModelBuilder.build_example_with_postprocessors(example_pps_output_file)
+
+    # 5. Test Data1D functions
+    # example_data1d_funcs_output_file = os.path.join(output_dir, "model_builder_functions_output.i")
 
     # Call the static method to build and generate the file
-    ModelBuilder.build_example_with_postprocessors(example_pps_output_file)
+    ModelBuilder.build_example_with_data1d_functions("test_files/moose_input_file_test/123.i")
