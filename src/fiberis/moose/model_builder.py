@@ -1461,6 +1461,28 @@ class ModelBuilder:
             execute_on="timestep_end"
         ))
 
+        # Test the file path is working or not
+        import numpy as np
+        # 2. Create fiberis Data1D objects
+        time_pts1 = np.array([0.0, 10.0, 20.0, 30.0, 40.0])
+        pressure_values = np.array([1.0e6, 1.5e6, 2.0e6, 1.8e6, 1.0e6])  # Example pressure in Pa
+        pressure_data1d = core1D.Data1D(taxis=time_pts1, data=pressure_values, name="InjectionPressureSchedule")
+
+        time_pts2 = np.array([0.0, 5.0, 15.0, 25.0, 35.0, 40.0])
+        rate_values = np.array([0.001, 0.002, 0.0025, 0.0015, 0.0005, 0.0005])  # Example rate m3/s
+        rate_data1d = core1D.Data1D(taxis=time_pts2, data=rate_values, name="InjectionRate")
+
+        builder.add_piecewise_function_from_data1d(
+            name="pressure_func_from_data1d",
+            source_data1d=pressure_data1d
+        )
+
+        builder.add_piecewise_function_from_data1d(
+            name="rate_func_from_data1d",
+            source_data1d=rate_data1d,
+            other_params={"fill_value": "NEAREST"}  # Example of an optional parameter
+        )
+
         # (Add other necessary blocks like Kernels, Functions, BCs, Executioner, Outputs
         #  for a runnable simulation.)
 
@@ -1501,13 +1523,6 @@ class ModelBuilder:
             other_params={"fill_value": "NEAREST"}  # Example of an optional parameter
         )
 
-        # (Add other necessary blocks like Variables, Kernels, BCs, Executioner, Outputs
-        #  for a runnable simulation that might use these functions.)
-
-        # Example: Add a placeholder Variables block
-        # vars_block_obj = builder._get_or_create_toplevel_moose_block("Variables")
-        # pp_var = MooseBlock("pp"); vars_block_obj.add_sub_block(pp_var)
-
         builder.generate_input_file(output_filepath)
         print(f"Example file with Functions from Data1D generated: {output_filepath}")
 
@@ -1540,14 +1555,15 @@ if __name__ == '__main__':  # This should be at the bottom of your model_builder
     # example_individual_bcs_output_file = os.path.join(output_dir, "model_builder_individual_bcs_uos_output.i")
     # ModelBuilder.build_example_with_individual_bcs(example_individual_bcs_output_file)
 
-    # # 4. Test Postprocessors
-    # example_pps_output_file = os.path.join(output_dir, "model_builder_postprocessors_output.i")
-    #
-    # # Call the static method to build and generate the file
-    # ModelBuilder.build_example_with_postprocessors(example_pps_output_file)
+    # 4. Test Postprocessors
+    example_pps_output_file = os.path.join(output_dir, "model_builder_postprocessors_output.i")
+    print(example_pps_output_file)
+    # Call the static method to build and generate the file
+    ModelBuilder.build_example_with_postprocessors(example_pps_output_file)
 
     # 5. Test Data1D functions
     # example_data1d_funcs_output_file = os.path.join(output_dir, "model_builder_functions_output.i")
 
-    # Call the static method to build and generate the file
-    ModelBuilder.build_example_with_data1d_functions("test_files/moose_input_file_test/123.i")
+    # Call the static method to build and generate the file. IDK why this need absolute path.
+    # ModelBuilder.build_example_with_data1d_functions("/rcp/rcp42/home/shenyaojin/Documents/bakken_mariner/test_files/"
+    #                                                  "moose_input_file_test/model_builder_functions_output.i")
