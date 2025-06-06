@@ -8,7 +8,7 @@ from typing import List, Dict, Any, Union, Tuple, Optional
 # Import config classes and lower-level MooseBlock class.
 from fiberis.moose.config import HydraulicFractureConfig, SRVConfig, AdaptivityConfig, \
     PointValueSamplerConfig, LineValueSamplerConfig, PostprocessorConfigBase, \
-    SimpleFluidPropertiesConfig
+    SimpleFluidPropertiesConfig, MatrixConfig
 from fiberis.moose.input_generator import MooseBlock
 # Import data format in fiberis module
 from fiberis.analyzer.Data1D import core1D # Core function for
@@ -22,21 +22,20 @@ class ModelBuilder:
     """
 
     def __init__(self, project_name: str):
-        """
-        Initializes the ModelBuilder.
-
-        Args:
-            project_name (str): The name of the project.
-        """
         self.project_name: str = project_name
-        self._top_level_blocks: List[MooseBlock] = []  # Stores top-level MooseBlock objects (e.g., for Mesh, Variables)
+        self._top_level_blocks: List[MooseBlock] = []
+
+        # Configuration object storage
+        self.matrix_config: Optional[MatrixConfig] = None
+        self.srv_configs: List[SRVConfig] = []
+        self.fracture_configs: List[HydraulicFractureConfig] = []
+        self.fluid_properties_configs: List[SimpleFluidPropertiesConfig] = []
 
         # Mesh specific tracking
-        self._block_id_to_name_map: Dict[int, str] = {}  # Numeric ID to final name for blocks
-        self._next_available_block_id: int = 1  # Start assigning from 1 (0 is often default matrix)
+        self._block_id_to_name_map: Dict[int, str] = {}
+        self._next_available_block_id: int = 1
         self._main_domain_block_id: int = 0
-        self._last_mesh_op_name_within_mesh_block: Optional[
-            str] = None  # Tracks the name of the last sub-operation *within* the [Mesh] block
+        self._last_mesh_op_name_within_mesh_block: Optional[str] = None
 
     def _generate_unique_op_name(self, base_name: str, existing_names_list: List[str]) -> str:
         """Generates a unique name for an operation within a list of existing names."""
@@ -59,6 +58,33 @@ class ModelBuilder:
         mesh_block = MooseBlock("Mesh")
         self._top_level_blocks.append(mesh_block)
         return mesh_block
+
+    def _get_or_create_toplevel_moose_block(self, block_name: str) -> MooseBlock:
+        for block in self._top_level_blocks:
+            if block.block_name == block_name:
+                return block
+        new_block = MooseBlock(block_name)
+        self._top_level_blocks.append(new_block)
+        return new_block
+
+    # --- Set configuration for the model ---
+    def set_matrix_config(self, config: 'MatrixConfig') -> 'ModelBuilder':
+        self.matrix_config = config
+        return self
+
+    def add_srv_config(self, config: 'SRVConfig') -> 'ModelBuilder':
+        self.srv_configs.append(config)
+        return self
+
+    def add_fracture_config(self, config: 'HydraulicFractureConfig') -> 'ModelBuilder':
+        self.fracture_configs.append(config)
+        return self
+
+    def add_fluid_properties_config(self, config: 'SimpleFluidPropertiesConfig') -> 'ModelBuilder':
+        # Remove existing config with the same name before adding
+        self.fluid_properties_configs = [c for c in self.fluid_properties_configs if c.name != config.name]
+        self.fluid_properties_configs.append(config)
+        return self
 
     # --- API Methods for Mesh Construction ---
 
@@ -1135,6 +1161,97 @@ class ModelBuilder:
 
         fp_main_block.add_sub_block(fp_sub_block)
         print(f"Info: Added SimpleFluidProperties '{config.name}'.")
+        return self
+
+    # --- Materials Block Generation ---
+    def add_poromechanics_materials(self,
+                                    fluid_properties_name: str,
+                                    biot_coefficient: float,
+                                    solid_bulk_compliance: float,
+                                    displacements: List[str] = ['disp_x', 'disp_y'],
+                                    porepressure_variable: str = 'pp') -> 'ModelBuilder':
+        """
+        Builds the entire [Materials] and linked [FluidProperties] blocks based on stored configs
+        and provided global properties.
+
+        Args:
+            fluid_properties_name (str): The name of the SimpleFluidPropertiesConfig to use.
+            biot_coefficient (float): The Biot coefficient for poroelastic coupling.
+            solid_bulk_compliance (float): Compliance of the solid grain material.
+            displacements (List[str], optional): List of displacement variable names. Defaults to ['disp_x', 'disp_y'].
+            porepressure_variable (str, optional): Name of the porepressure variable. Defaults to 'pp'.
+        """
+        # 1. Add FluidProperties block from the stored config
+        fluid_config = next((c for c in self.fluid_properties_configs if c.name == fluid_properties_name), None)
+        if not fluid_config:
+            raise ValueError(f"FluidPropertiesConfig with name '{fluid_properties_name}' not found. "
+                             "Please add it first using add_fluid_properties_config().")
+        self._add_simple_fluid_properties_material(fluid_config)
+
+        # 2. Add Materials block
+        mat_block = self._get_or_create_toplevel_moose_block("Materials")
+        all_configs = ([self.matrix_config] if self.matrix_config else []) + self.srv_configs + self.fracture_configs
+        all_block_names = [c.name for c in all_configs if c]
+
+        # Porosity and Permeability per block
+        for conf in all_configs:
+            if not conf: continue
+            # Porosity
+            poro_mat = MooseBlock(f"porosity_{conf.name}", "PorousFlowPorosityConst")
+            poro_mat.add_param("porosity", conf.materials.porosity)
+            poro_mat.add_param("block", conf.name)
+            mat_block.add_sub_block(poro_mat)
+            # Permeability
+            perm_mat = MooseBlock(f"permeability_{conf.name}", "PorousFlowPermeabilityConst")
+            perm_mat.add_param("permeability", conf.materials.permeability)
+            perm_mat.add_param("block", conf.name)
+            mat_block.add_sub_block(perm_mat)
+
+        # Global materials that apply to all blocks
+        mat_block.add_sub_block(MooseBlock("temperature", "PorousFlowTemperature"))
+
+        biot_mod_mat = MooseBlock("biot_modulus", "PorousFlowConstantBiotModulus")
+        biot_mod_mat.add_param("biot_coefficient", biot_coefficient)
+        biot_mod_mat.add_param("solid_bulk_compliance", solid_bulk_compliance)
+        biot_mod_mat.add_param("fluid_bulk_modulus", fluid_config.bulk_modulus)
+        biot_mod_mat.add_param("block", ' '.join(all_block_names))
+        mat_block.add_sub_block(biot_mod_mat)
+
+        mat_block.add_sub_block(MooseBlock("massfrac", "PorousFlowMassFraction"))
+
+        fluid_mat = MooseBlock("simple_fluid", "PorousFlowSingleComponentFluid")
+        fluid_mat.add_param("fp", fluid_config.name)
+        fluid_mat.add_param("phase", 0)
+        mat_block.add_sub_block(fluid_mat)
+
+        mat_block.add_sub_block(
+            MooseBlock("PS", "PorousFlow1PhaseFullySaturated", params={"porepressure": porepressure_variable}))
+        mat_block.add_sub_block(MooseBlock("relp", "PorousFlowRelativePermeabilityConst", params={"phase": 0}))
+        mat_block.add_sub_block(MooseBlock("eff_fluid_pressure_qp", "PorousFlowEffectiveFluidPressure"))
+
+        # Elasticity and Strain (using matrix properties as the base elasticity)
+        elasticity_mat = MooseBlock("elasticity_tensor_matrix", "ComputeIsotropicElasticityTensor")
+        if self.matrix_config and self.matrix_config.materials.poissons_ratio is not None:
+            elasticity_mat.add_param("poissons_ratio", self.matrix_config.materials.poissons_ratio)
+        else:  # Fallback value if not provided
+            elasticity_mat.add_param("poissons_ratio", 0.2)
+
+        # ComputeIsotropicElasticityTensor can take youngs_modulus or bulk_modulus.
+        # We prioritize Young's Modulus if available, otherwise use a fallback bulk modulus.
+        if self.matrix_config and self.matrix_config.materials.youngs_modulus is not None:
+            elasticity_mat.add_param("youngs_modulus", self.matrix_config.materials.youngs_modulus)
+        else:  # Fallback value if not provided
+            elasticity_mat.add_param("bulk_modulus", 5.0E10)
+        mat_block.add_sub_block(elasticity_mat)
+
+        strain_mat = MooseBlock("strain", "ComputeSmallStrain")
+        strain_mat.add_param("displacements", ' '.join(displacements))
+        mat_block.add_sub_block(strain_mat)
+
+        mat_block.add_sub_block(MooseBlock("stress", "ComputeLinearElasticStress"))
+        mat_block.add_sub_block(MooseBlock("vol_strain", "PorousFlowVolumetricStrain"))
+
+        print("Info: Added poromechanics materials based on stored configurations.")
         return self
 
     # --- File Generation ---

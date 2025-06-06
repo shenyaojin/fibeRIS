@@ -3,9 +3,55 @@
 # Shenyao Jin, shenyaojin@mines.edu, 2025-05-26
 from typing import List, Dict, Any, Optional, Union, Tuple
 
+# +++ Material Properties +++
+class ZoneMaterialProperties:
+    """
+    A data container for the physical properties of a single mesh zone/block.
+    This object will be part of a MatrixConfig, SRVConfig, or HydraulicFractureConfig.
+    """
+    def __init__(self,
+                 porosity: float,
+                 permeability: str, # MOOSE expects a string for the tensor, e.g., '1e-15 0 0 ...'
+                 youngs_modulus: Optional[float] = None, # For solid mechanics
+                 poissons_ratio: Optional[float] = None): # For solid mechanics
+        """
+        Initializes material properties for a specific zone.
+
+        Args:
+            porosity (float): The porosity of the material in this zone.
+            permeability (str): The permeability tensor as a space-separated string.
+            youngs_modulus (Optional[float], optional): Young's modulus for elasticity. Defaults to None.
+            poissons_ratio (Optional[float], optional): Poisson's ratio for elasticity. Defaults to None.
+        """
+        self.porosity: float = porosity
+        self.permeability: str = permeability
+        self.youngs_modulus: Optional[float] = youngs_modulus
+        self.poissons_ratio: Optional[float] = poissons_ratio
+
+
+# +++ Matrix Configuration +++
+class MatrixConfig:
+    """
+    Configuration for the main reservoir matrix, including its name and material properties.
+    """
+    def __init__(self,
+                 name: str,
+                 materials: ZoneMaterialProperties):
+        """
+        Initializes the MatrixConfig.
+
+        Args:
+            name (str): The name for the matrix block (e.g., "matrix").
+            materials (ZoneMaterialProperties): An object containing the material properties for the matrix.
+        """
+        self.name: str = name
+        self.materials: ZoneMaterialProperties = materials
+
+
+# +++ HydraulicFractureConfig +++
 class HydraulicFractureConfig:
     """
-    Configuration class for defining the properties of a single hydraulic fracture.
+    UPDATED: Configuration for a hydraulic fracture, now including material properties.
     """
     def __init__(self,
                  name: str,
@@ -13,83 +59,74 @@ class HydraulicFractureConfig:
                  height: float, # In 2D, this often represents the fracture's aperture or thickness for meshing
                  center_x: float,
                  center_y: float,
+                 materials: ZoneMaterialProperties, # <-- Replaces individual material properties
                  orientation_angle: float = 0.0, # Degrees, relative to X-axis
                  mesh_length_param: Optional[float] = None, # E.g., target element size or refinement level
-                 mesh_height_param: Optional[float] = None, # E.g., target element size or refinement level
-                 permeability: Optional[float] = None):
+                 mesh_height_param: Optional[float] = None): # E.g., target element size or refinement level
         """
         Initializes a HydraulicFractureConfig object.
 
         Args:
             name (str): Unique name/identifier for the fracture.
             length (float): Length of the fracture (e.g., along the X-axis if orientation_angle is 0).
-            height (float): Thickness or aperture of the fracture in the 2D mesh (e.g., its extent in the Y-direction if orientation_angle is 0).
+            height (float): Thickness or aperture of the fracture in the 2D mesh.
             center_x (float): X-coordinate of the fracture's center point.
             center_y (float): Y-coordinate of the fracture's center point.
-            orientation_angle (float, optional): Orientation angle of the fracture in degrees,
-                                                 relative to the positive X-axis (counter-clockwise).
-                                                 Defaults to 0.0.
-                                                 Note: Full geometric implementation of arbitrary angles
-                                                 in the ModelBuilder might be deferred.
+            materials (ZoneMaterialProperties): An object containing material properties for the fracture.
+            orientation_angle (float, optional): Orientation angle of the fracture in degrees. Defaults to 0.0.
             mesh_length_param (Optional[float], optional): Mesh refinement parameter along the fracture's length.
-                                                            The interpretation (e.g., element count, element size)
-                                                            depends on how it's used by the ModelBuilder.
-                                                            Defaults to None.
             mesh_height_param (Optional[float], optional): Mesh refinement parameter along the fracture's height/aperture.
-                                                             Defaults to None.
-            permeability (Optional[float], optional): Permeability of the fracture zone. Defaults to None.
         """
         self.name: str = name
         self.length: float = length
         self.height: float = height
         self.center_x: float = center_x
         self.center_y: float = center_y
+        self.materials: ZoneMaterialProperties = materials # <-- New attribute
         self.orientation_angle: float = orientation_angle
         self.mesh_length_param: Optional[float] = mesh_length_param
         self.mesh_height_param: Optional[float] = mesh_height_param
-        self.permeability: Optional[float] = permeability
 
         if self.orientation_angle != 0.0:
             print(f"Info: HydraulicFractureConfig '{self.name}' has a non-zero orientation_angle ({self.orientation_angle}°). "
-                  "Full geometric support for arbitrary angles in the mesh generation process might be limited "
-                  "or implemented in later stages. Current implementation might assume axis-aligned features.")
+                  "Full geometric support for arbitrary angles in the mesh generation process might be limited.")
 
+
+# +++ SRVConfig +++
 class SRVConfig:
     """
-    Configuration class for defining the properties of a Stimulated Reservoir Volume (SRV) zone.
+    UPDATED: Configuration for an SRV zone, now including material properties.
     """
     def __init__(self,
                  name: str,
                  length: float, # Dimension along X-axis by default
-                 height: float,  # Dimension along Y-axis by default
+                 height: float, # Dimension along Y-axis by default
                  center_x: float,
                  center_y: float,
+                 materials: ZoneMaterialProperties, # <-- Replaces individual material properties
                  mesh_length_param: Optional[float] = None, # E.g., target element size or refinement level along length
-                 mesh_height_param: Optional[float] = None,  # E.g., target element size or refinement level along height
-                 permeability: Optional[float] = None):
+                 mesh_height_param: Optional[float] = None): # E.g., target element size or refinement level along height
         """
         Initializes an SRVConfig object.
 
         Args:
             name (str): Unique name/identifier for the SRV zone.
             length (float): Length of the SRV zone (e.g., along X-axis).
-            height (float): height of the SRV zone (e.g., along Y-axis).
+            height (float): Height of the SRV zone (e.g., along Y-axis).
             center_x (float): X-coordinate of the SRV zone's center point.
             center_y (float): Y-coordinate of the SRV zone's center point.
+            materials (ZoneMaterialProperties): An object containing material properties for the SRV.
             mesh_length_param (Optional[float], optional): Mesh size or refinement parameter along the SRV zone's length.
-                                                            Defaults to None.
             mesh_height_param (Optional[float], optional): Mesh size or refinement parameter along the SRV zone's height.
-                                                           Defaults to None.
-            permeability (Optional[float], optional): Permeability of the SRV zone. Defaults to None.
         """
         self.name: str = name
         self.length: float = length
         self.height: float = height
         self.center_x: float = center_x
         self.center_y: float = center_y
+        self.materials: ZoneMaterialProperties = materials # <-- New attribute
         self.mesh_length_param: Optional[float] = mesh_length_param
         self.mesh_height_param: Optional[float] = mesh_height_param
-        self.permeability: Optional[float] = permeability
 
 class IndicatorConfig:
     """
@@ -102,15 +139,6 @@ class IndicatorConfig:
                  params: Dict[str, Any]):
         """
         Initializes an IndicatorConfig object.
-
-        Args:
-            name (str): The user-chosen name for this indicator (e.g., "error").
-                        This name is used locally within the [Adaptivity] block,
-                        for example, to be referenced by a Marker.
-            type (str): The MOOSE type for the indicator (e.g., "GradientJumpIndicator",
-                        "ErrorResidualIndicator").
-            params (Dict[str, Any]): A dictionary of parameters for this indicator.
-                                     Example: {"variable": "convected", "outputs": "none"}
         """
         self.name: str = name
         self.type: str = type
@@ -127,15 +155,6 @@ class MarkerConfig:
                  params: Dict[str, Any]):
         """
         Initializes a MarkerConfig object.
-
-        Args:
-            name (str): The user-chosen name for this marker (e.g., "errorfrac").
-                        This name is used by the main [Adaptivity] block's 'marker' parameter.
-            type (str): The MOOSE type for the marker (e.g., "ErrorFractionMarker",
-                        "ValueThresholdMarker").
-            params (Dict[str, Any]): A dictionary of parameters for this marker.
-                                     Example: {"indicator": "error", "refine": 0.5, "coarsen": 0}
-                                     The "indicator" key should refer to the 'name' of an IndicatorConfig.
         """
         self.name: str = name
         self.type: str = type
@@ -153,18 +172,6 @@ class AdaptivityConfig:
                  markers: Optional[List[MarkerConfig]] = None):
         """
         Initializes an AdaptivityConfig object.
-
-        Args:
-            marker_to_use (str): The name of the MarkerConfig instance (defined in the 'markers' list)
-                                 that the [Adaptivity] block should use. This corresponds to the
-                                 'marker = ...' parameter in the [Adaptivity] block.
-            steps (int): The number of adaptivity steps to perform during the simulation.
-                         Corresponds to the 'steps = ...' parameter.
-            indicators (Optional[List[IndicatorConfig]], optional): A list of IndicatorConfig objects.
-                                                                    Defaults to None, meaning no indicators
-                                                                    will be explicitly defined by this object initially.
-            markers (Optional[List[MarkerConfig]], optional): A list of MarkerConfig objects.
-                                                              Defaults to None.
         """
         self.marker_to_use: str = marker_to_use
         self.steps: int = steps
@@ -188,29 +195,18 @@ class PostprocessorConfigBase:
     """
     Base configuration class for a MOOSE Postprocessor.
     """
-
     def __init__(self,
                  name: str,
-                 pp_type: str,  # MOOSE type of the postprocessor
+                 pp_type: str, # MOOSE type of the postprocessor
                  execute_on: Optional[Union[str, List[str]]] = None,
-                 variable: Optional[str] = None,  # For postprocessors operating on a single variable
-                 variables: Optional[List[str]] = None,  # For postprocessors operating on multiple variables
+                 variable: Optional[str] = None, # For postprocessors operating on a single variable
+                 variables: Optional[List[str]] = None, # For postprocessors operating on multiple variables
                  other_params: Optional[Dict[str, Any]] = None):
         """
         Initializes the base configuration for a postprocessor.
-
-        Args:
-            name (str): The user-chosen name for this postprocessor.
-            pp_type (str): The MOOSE type string for the postprocessor.
-            execute_on (Optional[Union[str, List[str]]], optional): When to execute.
-                Defaults to None (MOOSE default, often 'timestep_end').
-            variable (Optional[str], optional): Single variable to operate on. Defaults to None.
-            variables (Optional[List[str]], optional): List of variables to operate on. Defaults to None.
-            other_params (Optional[Dict[str, Any]], optional): Dictionary for any other specific parameters.
-                                                               Defaults to None.
         """
         self.name: str = name
-        self.pp_type: str = pp_type  # This will be set by derived classes typically
+        self.pp_type: str = pp_type
         self.execute_on: Optional[Union[str, List[str]]] = execute_on
         self.variable: Optional[str] = variable
         self.variables: Optional[List[str]] = variables
@@ -221,25 +217,17 @@ class PointValueSamplerConfig(PostprocessorConfigBase):
     """
     Configuration for a 'PointValue' or similar point-based scalar MOOSE Postprocessor.
     """
-
     def __init__(self,
                  name: str,
-                 variable: str,  # PointValue typically operates on a single variable
-                 point: Union[Tuple[float, ...], str],  # (x,y) or (x,y,z) or "x y z"
+                 variable: str, # PointValue typically operates on a single variable
+                 point: Union[Tuple[float, ...], str], # (x,y) or (x,y,z) or "x y z"
                  execute_on: Optional[Union[str, List[str]]] = None,
                  other_params: Optional[Dict[str, Any]] = None):
         """
         Initializes a PointValueSamplerConfig object.
-
-        Args:
-            name (str): Name for this postprocessor.
-            variable (str): The variable to sample.
-            point (Union[Tuple[float, ...], str]): Coordinates of the point to sample.
-            execute_on (Optional[Union[str, List[str]]], optional): When to execute.
-            other_params (Optional[Dict[str, Any]], optional): Additional parameters.
         """
         super().__init__(name=name,
-                         pp_type="PointValue",  # MOOSE type for this specific config
+                         pp_type="PointValue", # MOOSE type for this specific config
                          execute_on=execute_on,
                          variable=variable,
                          other_params=other_params)
@@ -255,36 +243,19 @@ class LineValueSamplerConfig(PostprocessorConfigBase):
     Configuration for a 'LineValueSampler' MOOSE Postprocessor.
     This can output scalar statistics (min, max, avg) or a vector of values along the line.
     """
-
     def __init__(self,
                  name: str,
                  variable: str,
                  start_point: Union[Tuple[float, ...], str],
                  end_point: Union[Tuple[float, ...], str],
-                 num_points: int = 100,  # Default number of sample points on the line
-                 output_vector: bool = False,  # If true, configures for vector output (e.g., to CSV)
+                 num_points: int = 100, # Default number of sample points on the line
+                 output_vector: bool = False, # If true, configures for vector output (e.g., to CSV)
                  execute_on: Optional[Union[str, List[str]]] = None,
                  other_params: Optional[Dict[str, Any]] = None):
         """
         Initializes a LineValueSamplerConfig object.
-
-        Args:
-            name (str): Name for this postprocessor.
-            variable (str): The variable to sample along the line.
-            start_point (Union[Tuple[float, ...], str]): Start coordinates of the line.
-            end_point (Union[Tuple[float, ...], str]): End coordinates of the line.
-            num_points (int, optional): Number of points to sample along the line. Defaults to 100.
-            output_vector (bool, optional): If True, sets 'output_vector_postprocessor = true'
-                                            in other_params, typically for CSV output of all points.
-                                            Otherwise, it might output scalar stats like min/max/avg.
-                                            Defaults to False.
-            execute_on (Optional[Union[str, List[str]]], optional): When to execute.
-            other_params (Optional[Dict[str, Any]], optional): Additional parameters.
         """
-        # Initialize other_params first if it's None
         current_other_params = other_params if other_params is not None else {}
-
-        # Add LineValueSampler specific parameters to other_params
         if not isinstance(start_point, str):
             current_other_params["start_point"] = ' '.join(map(str, start_point))
         else:
@@ -296,17 +267,14 @@ class LineValueSamplerConfig(PostprocessorConfigBase):
             current_other_params["end_point"] = end_point
 
         current_other_params["num_points"] = num_points
-
         if output_vector:
-            current_other_params["output_vector_postprocessor"] = True  # MOOSE boolean
+            current_other_params["output_vector_postprocessor"] = True # MOOSE boolean
 
         super().__init__(name=name,
-                         pp_type="LineValueSampler",  # MOOSE type
+                         pp_type="LineValueSampler", # MOOSE type
                          execute_on=execute_on,
                          variable=variable,
                          other_params=current_other_params)
-
-        # Make these accessible as direct attributes as well for clarity, though they are in other_params
         self.start_point_str: str = current_other_params["start_point"]
         self.end_point_str: str = current_other_params["end_point"]
         self.num_sample_points: int = num_points
@@ -328,22 +296,6 @@ class SimpleFluidPropertiesConfig:
                  porepressure_coefficient: Optional[float] = 1.0):
         """
         Initializes a SimpleFluidPropertiesConfig object.
-
-        Args:
-            name (str): The name to be used for the material sub-block in MOOSE
-                        (e.g., "simple_fluid"). This is the only required argument.
-            bulk_modulus (float, optional): The bulk modulus of the fluid (e.g., in Pa).
-                                            Defaults to 2.2E9.
-            viscosity (float, optional): The dynamic viscosity of the fluid (e.g., in Pa.s).
-                                         Defaults to 1.0E-3.
-            density0 (float, optional): The reference density of the fluid (e.g., in kg/m^3).
-                                        Defaults to 1000.0.
-            thermal_expansion (Optional[float], optional): The thermal expansion coefficient.
-                                                            Defaults to 0.0002.
-            cp (Optional[float], optional): Specific heat at constant pressure. Defaults to 4194.0.
-            cv (Optional[float], optional): Specific heat at constant volume. Defaults to 4186.0.
-            porepressure_coefficient (Optional[float], optional): The porepressure coefficient.
-                                                                    Defaults to 1.0.
         """
         self.name: str = name
         self.bulk_modulus: float = bulk_modulus
@@ -353,7 +305,6 @@ class SimpleFluidPropertiesConfig:
         self.cp: Optional[float] = cp
         self.cv: Optional[float] = cv
         self.porepressure_coefficient: Optional[float] = porepressure_coefficient
-
 
 if __name__ == '__main__':
     # Example usage of the new AMA configuration classes:
