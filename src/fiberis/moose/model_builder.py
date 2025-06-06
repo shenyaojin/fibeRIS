@@ -7,7 +7,8 @@ from typing import List, Dict, Any, Union, Tuple, Optional
 
 # Import config classes and lower-level MooseBlock class.
 from fiberis.moose.config import HydraulicFractureConfig, SRVConfig, AdaptivityConfig, \
-    PointValueSamplerConfig, LineValueSamplerConfig, PostprocessorConfigBase
+    PointValueSamplerConfig, LineValueSamplerConfig, PostprocessorConfigBase, \
+    SimpleFluidPropertiesConfig
 from fiberis.moose.input_generator import MooseBlock
 # Import data format in fiberis module
 from fiberis.analyzer.Data1D import core1D # Core function for
@@ -1074,6 +1075,68 @@ class ModelBuilder:
             f"Info: Added PiecewiseConstant Function '{name}' from Data1D source '{source_data1d.name or 'Unnamed'}'.")
         return self
 
+    def _get_or_create_fluid_properties_moose_block(self) -> 'MooseBlock':
+        """
+        Retrieves the main 'FluidProperties' MooseBlock from self._top_level_blocks,
+        or creates and adds it if it doesn't exist.
+        Internal helper method.
+        """
+        for block in self._top_level_blocks:
+            if block.block_name == "FluidProperties":
+                return block
+        # If not found, create it
+        fp_block = MooseBlock("FluidProperties")
+        self._top_level_blocks.append(fp_block)
+        return fp_block
+
+    def add_simple_fluid_properties(self, config: 'SimpleFluidPropertiesConfig') -> 'ModelBuilder':
+        """
+        Adds a SimpleFluidProperties material to the [FluidProperties] block
+        based on the provided config object.
+
+        If a sub-block with the same name (config.name) already exists under
+        [FluidProperties], it will be replaced.
+
+        Args:
+            config (SimpleFluidPropertiesConfig): A configuration object containing the
+                                                  parameters for the simple fluid.
+
+        Returns:
+            ModelBuilder: Returns self for chaining.
+        """
+
+        if not isinstance(config, SimpleFluidPropertiesConfig):
+            raise TypeError("config must be an instance of SimpleFluidPropertiesConfig.")
+
+        fp_main_block = self._get_or_create_fluid_properties_moose_block()
+
+        # Remove existing fluid property with the same name to replace it
+        fp_main_block.sub_blocks = [
+            sb for sb in fp_main_block.sub_blocks if sb.block_name != config.name
+        ]
+
+        # Create the sub-block for this specific fluid property definition
+        fp_sub_block = MooseBlock(config.name, block_type="SimpleFluidProperties")
+
+        # Add all mandatory parameters
+        fp_sub_block.add_param("bulk_modulus", config.bulk_modulus)
+        fp_sub_block.add_param("viscosity", config.viscosity)
+        fp_sub_block.add_param("density0", config.density0)
+
+        # Add all optional parameters if they are not None
+        if config.thermal_expansion is not None:
+            fp_sub_block.add_param("thermal_expansion", config.thermal_expansion)
+        if config.cp is not None:
+            fp_sub_block.add_param("cp", config.cp)
+        if config.cv is not None:
+            fp_sub_block.add_param("cv", config.cv)
+        if config.porepressure_coefficient is not None:
+            fp_sub_block.add_param("porepressure_coefficient", config.porepressure_coefficient)
+
+        fp_main_block.add_sub_block(fp_sub_block)
+        print(f"Info: Added SimpleFluidProperties '{config.name}'.")
+        return self
+
     # --- File Generation ---
     def generate_input_file(self, output_filepath: str):
         """
@@ -1525,6 +1588,41 @@ class ModelBuilder:
 
         builder.generate_input_file(output_filepath)
         print(f"Example file with Functions from Data1D generated: {output_filepath}")
+
+    @staticmethod
+    def build_example_with_fluid_props(output_filepath: str = "example_with_fluid_props.i"):
+        # Ensure SimpleFluidPropertiesConfig is importable here if not globally
+
+        builder = ModelBuilder(project_name="ExampleWithFluidProperties")
+
+        # 1. Define main domain (minimal for this example)
+        builder.set_main_domain_parameters_2d(
+            domain_name="matrix",
+            length=100, height=100,
+            num_elements_x=2, num_elements_y=2
+        )
+
+        # 2. Create a configuration object for the fluid properties
+        water_properties_config = SimpleFluidPropertiesConfig(
+            name="simple_fluid",
+            bulk_modulus=2.2E9,
+            viscosity=1.0E-3,
+            density0=1000.0,
+            thermal_expansion=0.0002,
+            cp=4194.0,
+            cv=4186.0,
+            porepressure_coefficient=1.0
+        )
+
+        # 3. Add the fluid properties to the model builder
+        builder.add_simple_fluid_properties(config=water_properties_config)
+
+        # (Add other necessary blocks like Variables, Kernels, Materials, etc.
+        #  for a runnable simulation. In MOOSE, FluidProperties are often used
+        #  in conjunction with Materials that reference them.)
+
+        builder.generate_input_file(output_filepath)
+        print(f"Example file with FluidProperties generated: {output_filepath}")
 
 if __name__ == '__main__':  # This should be at the bottom of your model_builder.py file
     import os

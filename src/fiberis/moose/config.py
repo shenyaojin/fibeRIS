@@ -311,6 +311,49 @@ class LineValueSamplerConfig(PostprocessorConfigBase):
         self.end_point_str: str = current_other_params["end_point"]
         self.num_sample_points: int = num_points
 
+class SimpleFluidPropertiesConfig:
+    """
+    Configuration for a set of constant fluid properties, designed to be used with
+    the 'SimpleFluidProperties' material in a MOOSE [FluidProperties] block.
+    Default values are provided for a water-like fluid.
+    """
+    def __init__(self,
+                 name: str,
+                 bulk_modulus: float = 2.2E9,
+                 viscosity: float = 1.0E-3,
+                 density0: float = 1000.0,
+                 thermal_expansion: Optional[float] = 0.0002,
+                 cp: Optional[float] = 4194.0, # Specific heat at constant pressure
+                 cv: Optional[float] = 4186.0, # Specific heat at constant volume
+                 porepressure_coefficient: Optional[float] = 1.0):
+        """
+        Initializes a SimpleFluidPropertiesConfig object.
+
+        Args:
+            name (str): The name to be used for the material sub-block in MOOSE
+                        (e.g., "simple_fluid"). This is the only required argument.
+            bulk_modulus (float, optional): The bulk modulus of the fluid (e.g., in Pa).
+                                            Defaults to 2.2E9.
+            viscosity (float, optional): The dynamic viscosity of the fluid (e.g., in Pa.s).
+                                         Defaults to 1.0E-3.
+            density0 (float, optional): The reference density of the fluid (e.g., in kg/m^3).
+                                        Defaults to 1000.0.
+            thermal_expansion (Optional[float], optional): The thermal expansion coefficient.
+                                                            Defaults to 0.0002.
+            cp (Optional[float], optional): Specific heat at constant pressure. Defaults to 4194.0.
+            cv (Optional[float], optional): Specific heat at constant volume. Defaults to 4186.0.
+            porepressure_coefficient (Optional[float], optional): The porepressure coefficient.
+                                                                    Defaults to 1.0.
+        """
+        self.name: str = name
+        self.bulk_modulus: float = bulk_modulus
+        self.viscosity: float = viscosity
+        self.density0: float = density0
+        self.thermal_expansion: Optional[float] = thermal_expansion
+        self.cp: Optional[float] = cp
+        self.cv: Optional[float] = cv
+        self.porepressure_coefficient: Optional[float] = porepressure_coefficient
+
 
 if __name__ == '__main__':
     # Example usage of the new AMA configuration classes:
