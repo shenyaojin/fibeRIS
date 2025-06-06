@@ -3,25 +3,32 @@
 # Higher-level API for building MOOSE input files, compared to input_generator.py and input_editor.py.
 # Shenyao Jin, shenyaojin@mines.edu, 05/24/2025
 # fiberis/moose/model_builder.py
+
 from typing import List, Dict, Any, Union, Tuple, Optional
 
 # Import config classes and lower-level MooseBlock class.
+# These imports assume the file structure is correct within the fiberis project.
 from fiberis.moose.config import HydraulicFractureConfig, SRVConfig, AdaptivityConfig, \
     PointValueSamplerConfig, LineValueSamplerConfig, PostprocessorConfigBase, \
     SimpleFluidPropertiesConfig, MatrixConfig
 from fiberis.moose.input_generator import MooseBlock
-# Import data format in fiberis module
-from fiberis.analyzer.Data1D import core1D # Core function for
+from fiberis.analyzer.Data1D import core1D
+
 
 class ModelBuilder:
     """
     This class provides a high-level API to construct MOOSE input files.
-    This version focuses on building the [Mesh] block directly using MooseBlock objects.
-    It uses configuration objects (HydraulicFractureConfig, SRVConfig)
-    to define physical features and translates them into MOOSE mesh operations.
+    It uses configuration objects (e.g., HydraulicFractureConfig, SRVConfig)
+    to define physical features and translates them into MOOSE mesh operations and other blocks.
     """
 
     def __init__(self, project_name: str):
+        """
+        Initializes the ModelBuilder.
+
+        Args:
+            project_name (str): The name of the project, used for identification.
+        """
         self.project_name: str = project_name
         self._top_level_blocks: List[MooseBlock] = []
 
@@ -46,52 +53,54 @@ class ModelBuilder:
             count += 1
         return op_name
 
-    def _get_or_create_mesh_moose_block(self) -> MooseBlock:
-        """
-        Retrieves the main 'Mesh' MooseBlock from self._top_level_blocks,
-        or creates and adds it if it doesn't exist.
-        """
-        for block in self._top_level_blocks:
-            if block.block_name == "Mesh":
-                return block
-        # If not found, create it
-        mesh_block = MooseBlock("Mesh")
-        self._top_level_blocks.append(mesh_block)
-        return mesh_block
-
     def _get_or_create_toplevel_moose_block(self, block_name: str) -> MooseBlock:
+        """
+        Retrieves a top-level MooseBlock from the internal list by its name,
+        or creates and adds it if it doesn't exist. This is the generic
+        getter for all top-level blocks (e.g., [Mesh], [Kernels], [BCs]).
+
+        Args:
+            block_name (str): The name of the top-level block (e.g., "Mesh", "Kernels").
+
+        Returns:
+            MooseBlock: The existing or newly created MooseBlock instance.
+        """
         for block in self._top_level_blocks:
             if block.block_name == block_name:
                 return block
+        # If not found, create it, add it to the list, and return it.
         new_block = MooseBlock(block_name)
         self._top_level_blocks.append(new_block)
         return new_block
 
-    # --- Set configuration for the model ---
+    # --- Configuration Setup ---
     def set_matrix_config(self, config: 'MatrixConfig') -> 'ModelBuilder':
+        """Sets the configuration for the main matrix block."""
         self.matrix_config = config
         return self
 
     def add_srv_config(self, config: 'SRVConfig') -> 'ModelBuilder':
+        """Adds a configuration for a Stimulated Reservoir Volume (SRV) zone."""
         self.srv_configs.append(config)
         return self
 
     def add_fracture_config(self, config: 'HydraulicFractureConfig') -> 'ModelBuilder':
+        """Adds a configuration for a hydraulic fracture."""
         self.fracture_configs.append(config)
         return self
 
     def add_fluid_properties_config(self, config: 'SimpleFluidPropertiesConfig') -> 'ModelBuilder':
-        # Remove existing config with the same name before adding
+        """Adds or replaces a fluid properties configuration."""
+        # Remove existing config with the same name before adding to avoid duplicates
         self.fluid_properties_configs = [c for c in self.fluid_properties_configs if c.name != config.name]
         self.fluid_properties_configs.append(config)
         return self
 
-    # --- API Methods for Mesh Construction ---
-
+    # --- Mesh Construction ---
     def set_main_domain_parameters_2d(self,
                                       domain_name: str,
-                                      length: float,  # X-dimension
-                                      height: float,  # Y-dimension
+                                      length: float,
+                                      height: float,
                                       num_elements_x: int,
                                       num_elements_y: int,
                                       xmin: float = 0.0,
@@ -100,38 +109,17 @@ class ModelBuilder:
                                       **additional_generator_params) -> 'ModelBuilder':
         """
         Defines the main 2D reservoir domain (matrix) using a GeneratedMeshGenerator.
-
-        Args:
-            domain_name (str): Name for the main reservoir domain (e.g., "matrix").
-            length (float): Total length of the matrix domain (X-dimension).
-            height (float): Total height of the matrix domain (Y-dimension).
-            num_elements_x (int): Number of mesh elements (nx) along the length.
-            num_elements_y (int): Number of mesh elements (ny) along the height.
-            xmin (float, optional): Minimum x-coordinate. Defaults to 0.0.
-            ymin (float, optional): Minimum y-coordinate. Defaults to 0.0.
-            moose_block_id (int, optional): The integer ID for this main domain. Defaults to 0.
-            **additional_generator_params: Other parameters for GeneratedMeshGenerator.
-
-        Returns:
-            ModelBuilder: Returns self for chaining.
         """
-        mesh_moose_block = self._get_or_create_mesh_moose_block()
+        mesh_moose_block = self._get_or_create_toplevel_moose_block("Mesh")
         existing_sub_block_names = [sb.block_name for sb in mesh_moose_block.sub_blocks]
 
         self._main_domain_block_id = moose_block_id
         self._block_id_to_name_map[self._main_domain_block_id] = domain_name
 
-        # Name for the GeneratedMeshGenerator operation itself
         gmg_op_name = self._generate_unique_op_name(f"{domain_name}_base_mesh", existing_sub_block_names)
-
         gmg_params = {
-            "dim": 2,
-            "nx": num_elements_x,
-            "ny": num_elements_y,
-            "xmin": xmin,
-            "xmax": xmin + length,
-            "ymin": ymin,
-            "ymax": ymin + height,
+            "dim": 2, "nx": num_elements_x, "ny": num_elements_y,
+            "xmin": xmin, "xmax": xmin + length, "ymin": ymin, "ymax": ymin + height,
             **additional_generator_params
         }
 
@@ -147,25 +135,13 @@ class ModelBuilder:
                                   fracture_config: HydraulicFractureConfig,
                                   target_moose_block_id: Optional[int] = None,
                                   refinement_passes: Optional[int] = None) -> 'ModelBuilder':
-        """
-        Adds a hydraulic fracture to the 2D model based on HydraulicFractureConfig.
-        Currently assumes axis-aligned fracture.
-
-        Args:
-            fracture_config (HydraulicFractureConfig): Configuration object for the fracture.
-            target_moose_block_id (Optional[int], optional): Numeric block ID. Auto-assigned if None.
-            refinement_passes (Optional[int], optional): Number of refinement passes. Defaults to None.
-
-        Returns:
-            ModelBuilder: Returns self for chaining.
-        """
-        mesh_moose_block = self._get_or_create_mesh_moose_block()
+        """Adds a hydraulic fracture to the 2D model based on its configuration."""
+        mesh_moose_block = self._get_or_create_toplevel_moose_block("Mesh")
         existing_sub_block_names = [sb.block_name for sb in mesh_moose_block.sub_blocks]
 
         if fracture_config.orientation_angle != 0.0:
-            print(f"Warning: HydraulicFractureConfig '{fracture_config.name}' has orientation_angle = "
-                  f"{fracture_config.orientation_angle}°. This API currently only supports axis-aligned "
-                  "fractures. The fracture will be generated as axis-aligned.")
+            print(f"Warning: HydraulicFractureConfig '{fracture_config.name}' has orientation_angle "
+                  f"{fracture_config.orientation_angle}°. API currently supports axis-aligned fractures.")
 
         block_id_to_use = target_moose_block_id
         if block_id_to_use is None:
@@ -174,7 +150,7 @@ class ModelBuilder:
         elif block_id_to_use == self._main_domain_block_id or block_id_to_use in self._block_id_to_name_map:
             new_id = self._next_available_block_id
             print(f"Warning: target_moose_block_id {block_id_to_use} for fracture '{fracture_config.name}' "
-                  f"is already in use or is the main domain ID. Assigning a new ID: {new_id}")
+                  f"is already in use. Assigning new ID: {new_id}")
             block_id_to_use = new_id
             self._next_available_block_id += 1
         self._block_id_to_name_map[block_id_to_use] = fracture_config.name
@@ -182,20 +158,12 @@ class ModelBuilder:
         half_length = fracture_config.length / 2.0
         half_height = fracture_config.height / 2.0  # Aperture
 
-        xmin = fracture_config.center_x - half_length
-        xmax = fracture_config.center_x + half_length
-        ymin = fracture_config.center_y - half_height
-        ymax = fracture_config.center_y + half_height
-
-        z_epsilon_bottom = "0.00000001"
-        z_epsilon_top = "0"
-
         bbox_op_name = self._generate_unique_op_name(f"{fracture_config.name}_bbox", existing_sub_block_names)
         bbox_params = {
-            "bottom_left": f"{xmin} {ymin} {z_epsilon_bottom}",
-            "top_right": f"{xmax} {ymax} {z_epsilon_top}",
+            "bottom_left": f"{fracture_config.center_x - half_length} {fracture_config.center_y - half_height} 0.00000001",
+            "top_right": f"{fracture_config.center_x + half_length} {fracture_config.center_y + half_height} 0",
             "block_id": block_id_to_use,
-            "input": self._last_mesh_op_name_within_mesh_block  # Link to previous mesh op
+            "input": self._last_mesh_op_name_within_mesh_block
         }
         bbox_sub_block = MooseBlock(bbox_op_name, block_type="SubdomainBoundingBoxGenerator")
         for p_name, p_val in bbox_params.items():
@@ -204,13 +172,12 @@ class ModelBuilder:
         current_op_chain_head = bbox_op_name
 
         if refinement_passes is not None and refinement_passes > 0:
-            existing_sub_block_names.append(current_op_chain_head)  # Update list for unique name gen
+            existing_sub_block_names.append(current_op_chain_head)
             refine_op_name = self._generate_unique_op_name(f"{fracture_config.name}_refine", existing_sub_block_names)
-            refinement_str = f"{refinement_passes} {refinement_passes}"
             refine_params = {
                 "block": str(block_id_to_use),
-                "refinement": refinement_str,
-                "input": current_op_chain_head  # Link to the BBox operation
+                "refinement": f"{refinement_passes} {refinement_passes}",
+                "input": current_op_chain_head
             }
             refine_sub_block = MooseBlock(refine_op_name, block_type="RefineBlockGenerator")
             for p_name, p_val in refine_params.items():
@@ -225,18 +192,8 @@ class ModelBuilder:
                         srv_config: SRVConfig,
                         target_moose_block_id: Optional[int] = None,
                         refinement_passes: Optional[int] = None) -> 'ModelBuilder':
-        """
-        Adds an SRV (Stimulated Reservoir Volume) zone to the 2D model.
-
-        Args:
-            srv_config (SRVConfig): Configuration object for the SRV zone.
-            target_moose_block_id (Optional[int], optional): Numeric block ID. Auto-assigned if None.
-            refinement_passes (Optional[int], optional): Number of refinement passes. Defaults to None.
-
-        Returns:
-            ModelBuilder: Returns self for chaining.
-        """
-        mesh_moose_block = self._get_or_create_mesh_moose_block()
+        """Adds a Stimulated Reservoir Volume (SRV) zone to the 2D model."""
+        mesh_moose_block = self._get_or_create_toplevel_moose_block("Mesh")
         existing_sub_block_names = [sb.block_name for sb in mesh_moose_block.sub_blocks]
 
         block_id_to_use = target_moose_block_id
@@ -246,7 +203,7 @@ class ModelBuilder:
         elif block_id_to_use == self._main_domain_block_id or block_id_to_use in self._block_id_to_name_map:
             new_id = self._next_available_block_id
             print(f"Warning: target_moose_block_id {block_id_to_use} for SRV '{srv_config.name}' "
-                  f"is already in use or is the main domain ID. Assigning a new ID: {new_id}")
+                  f"is already in use. Assigning new ID: {new_id}")
             block_id_to_use = new_id
             self._next_available_block_id += 1
         self._block_id_to_name_map[block_id_to_use] = srv_config.name
@@ -254,18 +211,10 @@ class ModelBuilder:
         half_length = srv_config.length / 2.0
         half_height = srv_config.height / 2.0
 
-        xmin = srv_config.center_x - half_length
-        xmax = srv_config.center_x + half_length
-        ymin = srv_config.center_y - half_height
-        ymax = srv_config.center_y + half_height
-
-        z_epsilon_bottom = "0.00000001"
-        z_epsilon_top = "0"
-
         bbox_op_name = self._generate_unique_op_name(f"{srv_config.name}_bbox", existing_sub_block_names)
         bbox_params = {
-            "bottom_left": f"{xmin} {ymin} {z_epsilon_bottom}",
-            "top_right": f"{xmax} {ymax} {z_epsilon_top}",
+            "bottom_left": f"{srv_config.center_x - half_length} {srv_config.center_y - half_height} 0.00000001",
+            "top_right": f"{srv_config.center_x + half_length} {srv_config.center_y + half_height} 0",
             "block_id": block_id_to_use,
             "input": self._last_mesh_op_name_within_mesh_block
         }
@@ -278,10 +227,9 @@ class ModelBuilder:
         if refinement_passes is not None and refinement_passes > 0:
             existing_sub_block_names.append(current_op_chain_head)
             refine_op_name = self._generate_unique_op_name(f"{srv_config.name}_refine", existing_sub_block_names)
-            refinement_str = f"{refinement_passes} {refinement_passes}"
             refine_params = {
                 "block": str(block_id_to_use),
-                "refinement": refinement_str,
+                "refinement": f"{refinement_passes} {refinement_passes}",
                 "input": current_op_chain_head
             }
             refine_sub_block = MooseBlock(refine_op_name, block_type="RefineBlockGenerator")
@@ -298,13 +246,9 @@ class ModelBuilder:
                              new_boundary_name: str,
                              coordinates: Union[Tuple[float, ...], str],
                              **additional_params) -> 'ModelBuilder':
-        """
-        Adds an ExtraNodesetGenerator block by coordinates.
-        The 'input' for this operation will be the last known mesh operation.
-        """
-        mesh_moose_block = self._get_or_create_mesh_moose_block()
+        """Adds an ExtraNodesetGenerator block to define a boundary by coordinates."""
+        mesh_moose_block = self._get_or_create_toplevel_moose_block("Mesh")
         existing_sub_block_names = [sb.block_name for sb in mesh_moose_block.sub_blocks]
-
         op_name = self._generate_unique_op_name(nodeset_op_name, existing_sub_block_names)
 
         params = {
@@ -321,41 +265,15 @@ class ModelBuilder:
         self._last_mesh_op_name_within_mesh_block = op_name
         return self
 
-    def _get_or_create_kernels_moose_block(self) -> 'MooseBlock':
-        """
-        Retrieves the main 'Kernels' MooseBlock from self._top_level_blocks,
-        or creates and adds it if it doesn't exist.
-        """
-        # This assumes self._top_level_blocks is a List[MooseBlock]
-        for block in self._top_level_blocks:
-            if block.block_name == "Kernels":
-                return block
-        # If not found, create it
-        kernels_block = MooseBlock("Kernels")
-        self._top_level_blocks.append(kernels_block)  # Add to the list of top-level blocks
-        return kernels_block
-
-    # --- API Methods for Kernels ---
+    # --- Kernels ---
     def add_time_derivative_kernel(self,
                                    variable: str,
                                    kernel_name: Optional[str] = None) -> 'ModelBuilder':
-        """
-        Adds a TimeDerivative kernel.
-
-        Args:
-            variable (str): The variable this kernel acts upon (e.g., "pp").
-            kernel_name (Optional[str], optional): The name for this kernel sub-block.
-                                                   Defaults to "dot_{variable}" if None.
-
-        Returns:
-            ModelBuilder: Returns self for chaining.
-        """
-        kernels_main_block = self._get_or_create_kernels_moose_block()
+        """Adds a TimeDerivative kernel."""
+        kernels_main_block = self._get_or_create_toplevel_moose_block("Kernels")
         name_to_use = kernel_name if kernel_name is not None else f"dot_{variable}"
-
         kernel_obj = MooseBlock(name_to_use, block_type="TimeDerivative")
         kernel_obj.add_param("variable", variable)
-
         kernels_main_block.add_sub_block(kernel_obj)
         return self
 
@@ -364,29 +282,12 @@ class ModelBuilder:
                                       variable: str,
                                       function_name: str,
                                       block_names: Union[str, List[str]]) -> 'ModelBuilder':
-        """
-        Adds a FunctionDiffusion kernel.
-
-        Args:
-            kernel_name (str): The name for this kernel sub-block (e.g., "srv_diffusion").
-            variable (str): The variable this kernel acts upon (e.g., "pp").
-            function_name (str): The name of the MOOSE Function that defines the diffusion coefficient.
-            block_names (Union[str, List[str]]): The block(s) this kernel applies to.
-                                                 Can be a single string or a list of strings.
-
-        Returns:
-            ModelBuilder: Returns self for chaining.
-        """
-        kernels_main_block = self._get_or_create_kernels_moose_block()
-
+        """Adds a FunctionDiffusion kernel."""
+        kernels_main_block = self._get_or_create_toplevel_moose_block("Kernels")
         kernel_obj = MooseBlock(kernel_name, block_type="FunctionDiffusion")
         kernel_obj.add_param("variable", variable)
         kernel_obj.add_param("function", function_name)
-        if isinstance(block_names, list):
-            kernel_obj.add_param("block", ' '.join(block_names))
-        else:
-            kernel_obj.add_param("block", block_names)
-
+        kernel_obj.add_param("block", ' '.join(block_names) if isinstance(block_names, list) else block_names)
         kernels_main_block.add_sub_block(kernel_obj)
         return self
 
@@ -395,29 +296,12 @@ class ModelBuilder:
                                          variable: str,
                                          block_names: Union[str, List[str]],
                                          tensor_coefficient: str) -> 'ModelBuilder':
-        """
-        Adds an AnisotropicDiffusion kernel.
-
-        Args:
-            kernel_name (str): The name for this kernel sub-block (e.g., "matrix_diffusion").
-            variable (str): The variable this kernel acts upon (e.g., "pp").
-            block_names (Union[str, List[str]]): The block(s) this kernel applies to.
-            tensor_coefficient (str): The string representation of the anisotropic diffusion tensor
-                                      (e.g., "'Kxx Kxy Kxz  Kxy Kyy Kyz  Kxz Kyz Kzz'").
-
-        Returns:
-            ModelBuilder: Returns self for chaining.
-        """
-        kernels_main_block = self._get_or_create_kernels_moose_block()
-
+        """Adds an AnisotropicDiffusion kernel."""
+        kernels_main_block = self._get_or_create_toplevel_moose_block("Kernels")
         kernel_obj = MooseBlock(kernel_name, block_type="AnisotropicDiffusion")
         kernel_obj.add_param("variable", variable)
-        if isinstance(block_names, list):
-            kernel_obj.add_param("block", ' '.join(block_names))
-        else:
-            kernel_obj.add_param("block", block_names)
-        kernel_obj.add_param("tensor_coeff", tensor_coefficient)  # Value is already a string
-
+        kernel_obj.add_param("block", ' '.join(block_names) if isinstance(block_names, list) else block_names)
+        kernel_obj.add_param("tensor_coeff", tensor_coefficient)
         kernels_main_block.add_sub_block(kernel_obj)
         return self
 
@@ -425,24 +309,11 @@ class ModelBuilder:
                                           kernel_name: str,
                                           variable: str,
                                           gravity_vector: str = '0 0 0') -> 'ModelBuilder':
-        """
-        Adds a PorousFlowFullySaturatedDarcyBase kernel (or similar Darcy flux term).
-
-        Args:
-            kernel_name (str): The name for this kernel sub-block (e.g., "flux").
-            variable (str): The variable this kernel acts upon (e.g., "pp").
-            gravity_vector (str, optional): String representation of the gravity vector.
-                                            Defaults to '0 0 0'.
-
-        Returns:
-            ModelBuilder: Returns self for chaining.
-        """
-        kernels_main_block = self._get_or_create_kernels_moose_block()
-
+        """Adds a PorousFlowFullySaturatedDarcyBase kernel."""
+        kernels_main_block = self._get_or_create_toplevel_moose_block("Kernels")
         kernel_obj = MooseBlock(kernel_name, block_type="PorousFlowFullySaturatedDarcyBase")
         kernel_obj.add_param("variable", variable)
-        kernel_obj.add_param("gravity", gravity_vector)  # Value is already a string
-
+        kernel_obj.add_param("gravity", gravity_vector)
         kernels_main_block.add_sub_block(kernel_obj)
         return self
 
@@ -450,147 +321,66 @@ class ModelBuilder:
                                             kernel_name: str,
                                             variable: str,
                                             component: int) -> 'ModelBuilder':
-        """
-        Adds a StressDivergenceTensors kernel.
-
-        Args:
-            kernel_name (str): The name for this kernel sub-block (e.g., "grad_stress_x").
-            variable (str): The displacement variable this kernel acts upon (e.g., "disp_x").
-            component (int): The component (0 for x, 1 for y, 2 for z).
-
-        Returns:
-            ModelBuilder: Returns self for chaining.
-        """
-        kernels_main_block = self._get_or_create_kernels_moose_block()
-
+        """Adds a StressDivergenceTensors kernel."""
+        kernels_main_block = self._get_or_create_toplevel_moose_block("Kernels")
         kernel_obj = MooseBlock(kernel_name, block_type="StressDivergenceTensors")
         kernel_obj.add_param("variable", variable)
         kernel_obj.add_param("component", component)
-
         kernels_main_block.add_sub_block(kernel_obj)
         return self
 
     def add_porous_flow_effective_stress_coupling_kernel(self,
                                                          kernel_name: str,
                                                          variable: str,
-                                                         # This is typically a displacement variable component
                                                          component: int,
                                                          biot_coefficient: float) -> 'ModelBuilder':
-        """
-        Adds a PorousFlowEffectiveStressCoupling kernel.
-        This kernel adds a term related to the divergence of displacement (strain) to the flow equation.
-
-        Args:
-            kernel_name (str): The name for this kernel sub-block (e.g., "poro_x").
-            variable (str): The displacement variable component this term is derived from (e.g., "disp_x").
-            component (int): The component of displacement gradient (0 for d/dx, 1 for d/dy).
-            biot_coefficient (float): The Biot coefficient.
-
-        Returns:
-            ModelBuilder: Returns self for chaining.
-        """
-        kernels_main_block = self._get_or_create_kernels_moose_block()
-
+        """Adds a PorousFlowEffectiveStressCoupling kernel."""
+        kernels_main_block = self._get_or_create_toplevel_moose_block("Kernels")
         kernel_obj = MooseBlock(kernel_name, block_type="PorousFlowEffectiveStressCoupling")
         kernel_obj.add_param("variable", variable)
         kernel_obj.add_param("component", component)
         kernel_obj.add_param("biot_coefficient", biot_coefficient)
-
         kernels_main_block.add_sub_block(kernel_obj)
         return self
 
     def add_porous_flow_mass_volumetric_expansion_kernel(self,
                                                          kernel_name: str,
-                                                         variable: str,  # This is typically the pore pressure variable
+                                                         variable: str,
                                                          fluid_component: int = 0) -> 'ModelBuilder':
-        """
-        Adds a PorousFlowMassVolumetricExpansion kernel.
-        This kernel accounts for fluid compressibility and other volumetric expansion effects.
-
-        Args:
-            kernel_name (str): The name for this kernel sub-block (e.g., "vol_strain_rate_water").
-            variable (str): The pore pressure variable this term is associated with (e.g., "pp").
-            fluid_component (int, optional): The fluid component index if using multi-component flow.
-                                             Defaults to 0.
-
-        Returns:
-            ModelBuilder: Returns self for chaining.
-        """
-        kernels_main_block = self._get_or_create_kernels_moose_block()
-
+        """Adds a PorousFlowMassVolumetricExpansion kernel."""
+        kernels_main_block = self._get_or_create_toplevel_moose_block("Kernels")
         kernel_obj = MooseBlock(kernel_name, block_type="PorousFlowMassVolumetricExpansion")
         kernel_obj.add_param("variable", variable)
         kernel_obj.add_param("fluid_component", fluid_component)
-
         kernels_main_block.add_sub_block(kernel_obj)
         return self
 
-    def _get_or_create_adaptivity_moose_block(self, adaptivity_block_name: str = "Adaptivity") -> 'MooseBlock':
-        """
-        Retrieves the main 'Adaptivity' MooseBlock from self._top_level_blocks,
-        or creates and adds it if it doesn't exist.
-        Internal helper method.
-        """
-        for block in self._top_level_blocks:
-            if block.block_name == adaptivity_block_name:
-                # Clear existing params and sub_blocks if we are re-configuring it
-                block.params.clear()
-                block.sub_blocks.clear()
-                return block
-        # If not found, create it
-        adapt_block = MooseBlock(adaptivity_block_name)
-        self._top_level_blocks.append(adapt_block)
-        return adapt_block
-
+    # --- Adaptivity ---
     def set_adaptivity_options(self,
                                enable: bool = True,
-                               config: Optional['AdaptivityConfig'] = None,
-                               # Use forward reference if AdaptivityConfig is in the same file and defined later, or import
+                               config: Optional[AdaptivityConfig] = None,
                                default_template_settings: Optional[Dict[str, Any]] = None,
                                adaptivity_block_name: str = "Adaptivity") -> 'ModelBuilder':
         """
         Sets the options for the [Adaptivity] block.
-
-        This method allows enabling/disabling adaptivity, using a detailed AdaptivityConfig object,
-        or applying a default template based on simple settings.
-
-        Args:
-            enable (bool, optional): If True, enables and configures adaptivity.
-                                     If False, removes the adaptivity block. Defaults to True.
-            config (Optional[AdaptivityConfig], optional): A pre-configured AdaptivityConfig object
-                                                           for detailed AMA setup. Defaults to None.
-            default_template_settings (Optional[Dict[str, Any]], optional):
-                If 'enable' is True and 'config' is None, these settings are used
-                to apply a default AMA template. Expected keys might include:
-                - 'monitored_variable' (str): Variable to base default indicator on (e.g., 'pp').
-                - 'refine_fraction' (float): Fraction of elements to refine (e.g., 0.3).
-                - 'coarsen_fraction' (float): Fraction of elements to coarsen (e.g., 0.05).
-                - 'steps' (int): Number of adaptivity steps (e.g., 2).
-                Defaults to None.
-            adaptivity_block_name (str, optional): The name for the [Adaptivity] top-level block.
-                                                   Defaults to "Adaptivity".
-
-        Returns:
-            ModelBuilder: Returns self for chaining.
         """
         if not enable:
-            # Remove the adaptivity block if it exists
             self._top_level_blocks = [
                 block for block in self._top_level_blocks if block.block_name != adaptivity_block_name
             ]
             print(f"Info: Adaptivity block '{adaptivity_block_name}' removed (disabled).")
             return self
 
-        adapt_moose_block = self._get_or_create_adaptivity_moose_block(adaptivity_block_name)
+        # Get or create the block, then clear it before populating
+        adapt_moose_block = self._get_or_create_toplevel_moose_block(adaptivity_block_name)
+        adapt_moose_block.params.clear()
+        adapt_moose_block.sub_blocks.clear()
 
         if config is not None:
-            # --- Configure using a detailed AdaptivityConfig object ---
-            if not isinstance(config, AdaptivityConfig):  # Make sure AdaptivityConfig is imported or defined
+            if not isinstance(config, AdaptivityConfig):
                 raise TypeError("The 'config' argument must be an instance of AdaptivityConfig.")
-
             adapt_moose_block.add_param("marker", config.marker_to_use)
             adapt_moose_block.add_param("steps", config.steps)
-
             if config.indicators:
                 indicators_main_sub = MooseBlock("Indicators")
                 for ind_conf in config.indicators:
@@ -599,7 +389,6 @@ class ModelBuilder:
                         indicator_obj.add_param(p_name, p_val)
                     indicators_main_sub.add_sub_block(indicator_obj)
                 adapt_moose_block.add_sub_block(indicators_main_sub)
-
             if config.markers:
                 markers_main_sub = MooseBlock("Markers")
                 for marker_conf in config.markers:
@@ -608,202 +397,89 @@ class ModelBuilder:
                         marker_obj.add_param(p_name, p_val)
                     markers_main_sub.add_sub_block(marker_obj)
                 adapt_moose_block.add_sub_block(markers_main_sub)
-
             print(f"Info: Adaptivity block '{adaptivity_block_name}' configured using provided AdaptivityConfig.")
 
         elif default_template_settings is not None:
-            # --- Configure using a default template ---
             print(f"Info: Configuring adaptivity block '{adaptivity_block_name}' using default template settings.")
-
-            mon_var = default_template_settings.get("monitored_variable", "pp")  # Default to 'pp'
+            mon_var = default_template_settings.get("monitored_variable", "pp")
             ref_frac = default_template_settings.get("refine_fraction", 0.3)
             coarse_frac = default_template_settings.get("coarsen_fraction", 0.05)
             adapt_steps = default_template_settings.get("steps", 2)
-
             default_indicator_name = f"indicator_on_{mon_var}"
             default_marker_name = f"marker_for_{mon_var}"
 
             adapt_moose_block.add_param("marker", default_marker_name)
             adapt_moose_block.add_param("steps", adapt_steps)
 
-            # Default Indicator: GradientJumpIndicator on the monitored variable
             indicators_main_sub = MooseBlock("Indicators")
             default_indicator = MooseBlock(default_indicator_name, block_type="GradientJumpIndicator")
             default_indicator.add_param("variable", mon_var)
-            default_indicator.add_param("outputs", "none")  # Common default
             indicators_main_sub.add_sub_block(default_indicator)
             adapt_moose_block.add_sub_block(indicators_main_sub)
 
-            # Default Marker: ErrorFractionMarker using the default indicator
             markers_main_sub = MooseBlock("Markers")
             default_marker = MooseBlock(default_marker_name, block_type="ErrorFractionMarker")
             default_marker.add_param("indicator", default_indicator_name)
             default_marker.add_param("refine", ref_frac)
             default_marker.add_param("coarsen", coarse_frac)
-            default_marker.add_param("outputs", "none")  # Common default
             markers_main_sub.add_sub_block(default_marker)
             adapt_moose_block.add_sub_block(markers_main_sub)
-
             print(f"Info: Applied default AMA template for variable '{mon_var}'.")
-
         else:
-            # enable=True, but no config and no default_template_settings provided
-            # Option: apply a very basic built-in template or raise an error/warning
-            print(f"Warning: Adaptivity enabled for '{adaptivity_block_name}', but no specific 'config' or "
-                  "'default_template_settings' provided. A minimal/default AMA setup might be applied if available, "
-                  "or it might be an empty [Adaptivity] block which could be an error in MOOSE.")
-            # For a truly minimal setup, you might just set steps, but MOOSE needs a marker.
-            # Let's apply a very basic template if nothing else is given.
-            adapt_moose_block.add_param("marker", "default_marker")  # Requires a marker named 'default_marker'
+            print(
+                f"Warning: Adaptivity enabled for '{adaptivity_block_name}', but no config provided. Applying basic fallback.")
+            adapt_moose_block.add_param("marker", "default_marker")
             adapt_moose_block.add_param("steps", 1)
 
-            indicators_main_sub = MooseBlock("Indicators")
-            default_indicator = MooseBlock("default_indicator", block_type="GradientJumpIndicator")
-            default_indicator.add_param("variable", "pp")  # Fallback variable
-            indicators_main_sub.add_sub_block(default_indicator)
-            adapt_moose_block.add_sub_block(indicators_main_sub)
+            indicators_sub = MooseBlock("Indicators")
+            default_indicator_block = MooseBlock("default_indicator", "GradientJumpIndicator")
+            default_indicator_block.add_param("variable", "pp")
+            indicators_sub.add_sub_block(default_indicator_block)
+            adapt_moose_block.add_sub_block(indicators_sub)
 
-            markers_main_sub = MooseBlock("Markers")
-            default_marker = MooseBlock("default_marker", block_type="ErrorFractionMarker")
-            default_marker.add_param("indicator", "default_indicator")
-            default_marker.add_param("refine", 0.5)
-            markers_main_sub.add_sub_block(default_marker)
-            adapt_moose_block.add_sub_block(markers_main_sub)
-            print("Info: Applied a very basic fallback AMA template for variable 'pp'.")
+            markers_sub = MooseBlock("Markers")
+            default_marker_block = MooseBlock("default_marker", "ErrorFractionMarker")
+            default_marker_block.add_param("indicator", "default_indicator")
+            default_marker_block.add_param("refine", 0.5)
+            markers_sub.add_sub_block(default_marker_block)
+            adapt_moose_block.add_sub_block(markers_sub)
 
         return self
 
     def _finalize_mesh_block_renaming(self):
-        """
-        Adds a RenameBlockGenerator at the end of the mesh operations
-        if there are mappings in _block_id_to_name_map.
-        This method should be called before rendering the Mesh block.
-        """
-        mesh_moose_block = self._get_or_create_mesh_moose_block()  # Ensures mesh_moose_block exists
-
+        """Adds a RenameBlockGenerator at the end of the mesh operations if needed."""
+        mesh_moose_block = self._get_or_create_toplevel_moose_block("Mesh")
         if self._block_id_to_name_map and self._last_mesh_op_name_within_mesh_block:
-            old_block_ids = []
-            new_block_names_str = []
-
-            sorted_block_ids = sorted(self._block_id_to_name_map.keys())
-
-            for block_id in sorted_block_ids:
+            old_block_ids, new_block_names = [], []
+            for block_id in sorted(self._block_id_to_name_map.keys()):
                 old_block_ids.append(str(block_id))
-                new_block_names_str.append(self._block_id_to_name_map[block_id])
-
+                new_block_names.append(self._block_id_to_name_map[block_id])
             if old_block_ids:
-                existing_sub_block_names = [sb.block_name for sb in mesh_moose_block.sub_blocks]
-                rename_op_name = self._generate_unique_op_name("final_block_rename", existing_sub_block_names)
-
-                rename_params = {
-                    "old_block": ' '.join(old_block_ids),
-                    "new_block": ' '.join(new_block_names_str),
-                    "input": self._last_mesh_op_name_within_mesh_block  # Link to the very last mesh state
-                }
+                rename_op_name = self._generate_unique_op_name("final_block_rename",
+                                                               [sb.block_name for sb in mesh_moose_block.sub_blocks])
                 rename_sub_block = MooseBlock(rename_op_name, block_type="RenameBlockGenerator")
-                for p_name, p_val in rename_params.items():
-                    rename_sub_block.add_param(p_name, p_val)
-
+                rename_sub_block.add_param("old_block", ' '.join(old_block_ids))
+                rename_sub_block.add_param("new_block", ' '.join(new_block_names))
+                rename_sub_block.add_param("input", self._last_mesh_op_name_within_mesh_block)
                 mesh_moose_block.add_sub_block(rename_sub_block)
                 self._last_mesh_op_name_within_mesh_block = rename_op_name
 
-    def _get_or_create_bcs_moose_block(self) -> 'MooseBlock':
-        """
-        Retrieves the main 'BCs' MooseBlock from self._top_level_blocks,
-        or creates and adds it if it doesn't exist.
-        Internal helper method.
-        """
-        for block in self._top_level_blocks:
-            if block.block_name == "BCs":
-                # For BCs, we might want to append rather than clear,
-                # unless a method is designed to set ALL BCs at once.
-                # For now, let's assume we can add multiple BCs.
-                return block
-        # If not found, create it
-        bcs_block = MooseBlock("BCs")
-        self._top_level_blocks.append(bcs_block)
-        return bcs_block
-
-    # Custom method to generate BCs
-
+    # --- Boundary Conditions ---
     def add_boundary_condition(self,
                                name: str,
                                bc_type: str,
                                variable: str,
                                boundary_name: Union[str, List[str]],
                                params: Optional[Dict[str, Any]] = None) -> 'ModelBuilder':
-        """
-        Adds a single, generic boundary condition to the [BCs] block.
-
-        Args:
-            name (str): The user-chosen name for this boundary condition sub-block (e.g., "pressure_left_wall").
-            bc_type (str): The MOOSE type for the boundary condition (e.g., "DirichletBC", "FunctionNeumannBC").
-            variable (str): The variable this boundary condition applies to (e.g., "pp", "disp_x").
-            boundary_name (Union[str, List[str]]): The name(s) of the mesh boundary (sideset or nodeset)
-                                                   this BC applies to. If a list, names will be space-separated.
-            params (Optional[Dict[str, Any]], optional): A dictionary of additional parameters specific
-                                                         to this bc_type (e.g., {"value": 0.0},
-                                                         {"function": "my_func_name"}). Defaults to None.
-
-        Returns:
-            ModelBuilder: Returns self for chaining.
-        """
-        bcs_main_block = self._get_or_create_bcs_moose_block()
-
+        """Adds a single, generic boundary condition to the [BCs] block."""
+        bcs_main_block = self._get_or_create_toplevel_moose_block("BCs")
         bc_sub_block = MooseBlock(name, block_type=bc_type)
         bc_sub_block.add_param("variable", variable)
-
-        if isinstance(boundary_name, list):
-            bc_sub_block.add_param("boundary", ' '.join(boundary_name))
-        else:
-            bc_sub_block.add_param("boundary", boundary_name)
-
+        bc_sub_block.add_param("boundary",
+                               ' '.join(boundary_name) if isinstance(boundary_name, list) else boundary_name)
         if params:
             for p_name, p_val in params.items():
                 bc_sub_block.add_param(p_name, p_val)
-
-        bcs_main_block.add_sub_block(bc_sub_block)
-        print(f"Info: Added Boundary Condition '{name}'.")
-        return self
-
-    # pre defined BC generators
-
-    def add_boundary_condition(self,
-                               name: str,
-                               bc_type: str,
-                               variable: str,
-                               boundary_name: Union[str, List[str]],
-                               params: Optional[Dict[str, Any]] = None) -> 'ModelBuilder':
-        """
-        Adds a single, generic boundary condition to the [BCs] block.
-
-        Args:
-            name (str): The user-chosen name for this boundary condition sub-block (e.g., "pressure_left_wall").
-            bc_type (str): The MOOSE type for the boundary condition (e.g., "DirichletBC", "FunctionNeumannBC").
-            variable (str): The variable this boundary condition applies to (e.g., "pp", "disp_x").
-            boundary_name (Union[str, List[str]]): The name(s) of the mesh boundary (sideset or nodeset)
-                                                   this BC applies to. If a list, names will be space-separated.
-            params (Optional[Dict[str, Any]], optional): A dictionary of additional parameters specific
-                                                         to this bc_type (e.g., {"value": 0.0},
-                                                         {"function": "my_func_name"}). Defaults to None.
-
-        Returns:
-            ModelBuilder: Returns self for chaining.
-        """
-        bcs_main_block = self._get_or_create_bcs_moose_block()
-
-        bc_sub_block = MooseBlock(name, block_type=bc_type)
-        bc_sub_block.add_param("variable", variable)
-
-        if isinstance(boundary_name, list):
-            bc_sub_block.add_param("boundary", ' '.join(boundary_name))
-        else:
-            bc_sub_block.add_param("boundary", boundary_name)
-
-        if params:
-            for p_name, p_val in params.items():
-                bc_sub_block.add_param(p_name, p_val)
-
         bcs_main_block.add_sub_block(bc_sub_block)
         print(f"Info: Added Boundary Condition '{name}'.")
         return self
@@ -816,69 +492,39 @@ class ModelBuilder:
                                      pressure_variable: str = "pp",
                                      disp_x_variable: str = "disp_x",
                                      disp_y_variable: str = "disp_y") -> 'ModelBuilder':
-        """
-        Sets up a predefined set of typical boundary conditions for a hydraulic fracturing simulation.
-        This method clears any existing BCs and adds a specific common set.
-        Consider using add_boundary_condition for more granular control.
-
-        Args:
-            injection_well_boundary_name (str): Name of the nodeset for injection well.
-            injection_pressure_function_name (str): Name of the MOOSE Function defining injection pressure.
-            confine_disp_x_boundaries (Union[str, List[str]]): Boundary name(s) for confining x-displacement.
-            confine_disp_y_boundaries (Union[str, List[str]]): Boundary name(s) for confining y-displacement.
-            pressure_variable (str, optional): Name of the pore pressure variable. Defaults to "pp".
-            disp_x_variable (str, optional): Name of the x-displacement variable. Defaults to "disp_x".
-            disp_y_variable (str, optional): Name of the y-displacement variable. Defaults to "disp_y".
-
-        Returns:
-            ModelBuilder: Returns self for chaining.
-        """
-        bcs_main_block = self._get_or_create_bcs_moose_block()
-        bcs_main_block.sub_blocks.clear()  # Start fresh for this specific set of BCs
-
-        # 1. Injection Pressure BC
+        """Sets up a predefined set of typical boundary conditions for a hydraulic fracturing simulation."""
+        bcs_main_block = self._get_or_create_toplevel_moose_block("BCs")
+        bcs_main_block.sub_blocks.clear()
         self.add_boundary_condition(
-            name="injection_pressure",
-            bc_type="FunctionDirichletBC",
-            variable=pressure_variable,
-            boundary_name=injection_well_boundary_name,
-            params={"function": injection_pressure_function_name}
+            name="injection_pressure", bc_type="FunctionDirichletBC", variable=pressure_variable,
+            boundary_name=injection_well_boundary_name, params={"function": injection_pressure_function_name}
         )
-
-        # 2. Confine X-Displacement BC
         self.add_boundary_condition(
-            name="confinex",
-            bc_type="DirichletBC",
-            variable=disp_x_variable,
-            boundary_name=confine_disp_x_boundaries,
-            params={"value": 0}
+            name="confinex", bc_type="DirichletBC", variable=disp_x_variable,
+            boundary_name=confine_disp_x_boundaries, params={"value": 0}
         )
-
-        # 3. Confine Y-Displacement BC
         self.add_boundary_condition(
-            name="confiney",
-            bc_type="DirichletBC",
-            variable=disp_y_variable,
-            boundary_name=confine_disp_y_boundaries,
-            params={"value": 0}
+            name="confiney", bc_type="DirichletBC", variable=disp_y_variable,
+            boundary_name=confine_disp_y_boundaries, params={"value": 0}
         )
-
-        print(f"Info: Set standard hydraulic fracturing BCs using predefined set.")
+        print("Info: Set standard hydraulic fracturing BCs using predefined set.")
         return self
 
-    def _get_or_create_user_objects_moose_block(self) -> 'MooseBlock':
-        """
-        Retrieves the main 'UserObjects' MooseBlock from self._top_level_blocks,
-        or creates and adds it if it doesn't exist.
-        Internal helper method.
-        """
-        for block in self._top_level_blocks:
-            if block.block_name == "UserObjects":
-                return block
-        # If not found, create it
-        uo_block = MooseBlock("UserObjects")
-        self._top_level_blocks.append(uo_block)
-        return uo_block
+    # --- User Objects ---
+    def add_user_object(self,
+                        name: str,
+                        uo_type: str,
+                        params: Optional[Dict[str, Any]] = None) -> 'ModelBuilder':
+        """Adds a single, generic UserObject, replacing any existing UO with the same name."""
+        uo_main_block = self._get_or_create_toplevel_moose_block("UserObjects")
+        uo_main_block.sub_blocks = [sb for sb in uo_main_block.sub_blocks if sb.block_name != name]
+        uo_sub_block = MooseBlock(name, block_type=uo_type)
+        if params:
+            for p_name, p_val in params.items():
+                uo_sub_block.add_param(p_name, p_val)
+        uo_main_block.add_sub_block(uo_sub_block)
+        print(f"Info: Added/Updated UserObject '{name}'.")
+        return self
 
     def set_porous_flow_dictator(self,
                                  dictator_name: str = "dictator",
@@ -886,278 +532,83 @@ class ModelBuilder:
                                  num_fluid_phases: int = 1,
                                  num_fluid_components: int = 1,
                                  **other_params) -> 'ModelBuilder':
-        """
-        Sets up the PorousFlowDictator UserObject with common parameters.
-        If a UserObject with 'dictator_name' already exists, it will be replaced.
-
-        Args:
-            dictator_name (str, optional): Name for the PorousFlowDictator. Defaults to "dictator".
-            porous_flow_variables (Union[str, List[str]], optional): Variable(s) governed by PorousFlow.
-                                                                    Defaults to "pp".
-            num_fluid_phases (int, optional): Number of fluid phases. Defaults to 1.
-            num_fluid_components (int, optional): Number of fluid components. Defaults to 1.
-            **other_params: Additional parameters for the PorousFlowDictator.
-
-        Returns:
-            ModelBuilder: Returns self for chaining.
-        """
-        uo_main_block = self._get_or_create_user_objects_moose_block()
-
-        # Remove existing dictator with the same name to replace it
-        uo_main_block.sub_blocks = [
-            sb for sb in uo_main_block.sub_blocks if sb.block_name != dictator_name
-        ]
-
+        """Convenience method to set up the PorousFlowDictator UserObject."""
         vars_str = ' '.join(porous_flow_variables) if isinstance(porous_flow_variables, list) else porous_flow_variables
-
         params = {
             "porous_flow_vars": vars_str,
             "number_fluid_phases": num_fluid_phases,
             "number_fluid_components": num_fluid_components,
             **other_params
         }
+        return self.add_user_object(name=dictator_name, uo_type="PorousFlowDictator", params=params)
 
-        dictator_obj = MooseBlock(dictator_name, block_type="PorousFlowDictator")
-        for p_name, p_val in params.items():
-            dictator_obj.add_param(p_name, p_val)
+    # --- Postprocessors ---
+    def add_postprocessor(self, config: PostprocessorConfigBase) -> 'ModelBuilder':
+        """Adds a postprocessor based on a configuration object."""
+        if not isinstance(config, PostprocessorConfigBase):
+            raise TypeError("config must be derived from PostprocessorConfigBase.")
 
-        uo_main_block.add_sub_block(dictator_obj)
-        print(f"Info: Set PorousFlowDictator '{dictator_name}'.")
-        return self
-
-    def add_user_object(self,
-                        name: str,
-                        uo_type: str,
-                        params: Optional[Dict[str, Any]] = None) -> 'ModelBuilder':
-        """
-        Adds a single, generic UserObject to the [UserObjects] block.
-        If a UserObject with the same 'name' already exists, it will be replaced.
-
-        Args:
-            name (str): The user-chosen name for this UserObject sub-block.
-            uo_type (str): The MOOSE type for the UserObject.
-            params (Optional[Dict[str, Any]], optional): A dictionary of parameters specific
-                                                         to this uo_type. Defaults to None.
-
-        Returns:
-            ModelBuilder: Returns self for chaining.
-        """
-        uo_main_block = self._get_or_create_user_objects_moose_block()
-
-        # Remove existing UO with the same name to replace it
-        uo_main_block.sub_blocks = [
-            sb for sb in uo_main_block.sub_blocks if sb.block_name != name
-        ]
-
-        uo_sub_block = MooseBlock(name, block_type=uo_type)
-        if params:
-            for p_name, p_val in params.items():
-                uo_sub_block.add_param(p_name, p_val)
-
-        uo_main_block.add_sub_block(uo_sub_block)
-        print(f"Info: Added/Updated UserObject '{name}'.")
-        return self
-
-    def _get_or_create_postprocessors_moose_block(self) -> 'MooseBlock':
-        """
-        Retrieves the main 'Postprocessors' MooseBlock from self._top_level_blocks,
-        or creates and adds it if it doesn't exist.
-        Internal helper method.
-        """
-        for block in self._top_level_blocks:
-            if block.block_name == "Postprocessors":
-                return block
-        # If not found, create it
-        pp_block = MooseBlock("Postprocessors")
-        self._top_level_blocks.append(pp_block)
-        return pp_block
-
-    def add_postprocessor(self,
-                          config: 'PostprocessorConfigBase') -> 'ModelBuilder':  # Use forward reference for PostprocessorConfigBase
-        """
-        Adds a single postprocessor to the [Postprocessors] block based on the provided config object.
-
-        Args:
-            config (PostprocessorConfigBase): A configuration object derived from PostprocessorConfigBase
-                                              (e.g., PointValueSamplerConfig, LineValueSamplerConfig).
-
-        Returns:
-            ModelBuilder: Returns self for chaining.
-        """
-        if not isinstance(config, PostprocessorConfigBase):  # Ensure PostprocessorConfigBase is imported
-            raise TypeError("config must be an instance of a class derived from PostprocessorConfigBase.")
-
-        pp_main_block = self._get_or_create_postprocessors_moose_block()
-
-        # Create the sub-block for this specific postprocessor
+        pp_main_block = self._get_or_create_toplevel_moose_block("Postprocessors")
         pp_sub_block = MooseBlock(config.name, block_type=config.pp_type)
 
-        # Add common parameters from PostprocessorConfigBase
         if config.execute_on:
-            exec_on_str = ' '.join(config.execute_on) if isinstance(config.execute_on, list) else config.execute_on
-            pp_sub_block.add_param("execute_on", exec_on_str)
-
+            exec_on = ' '.join(config.execute_on) if isinstance(config.execute_on, list) else config.execute_on
+            pp_sub_block.add_param("execute_on", exec_on)
         if config.variable:
             pp_sub_block.add_param("variable", config.variable)
+        if config.variables:
+            pp_sub_block.add_param("variables", ' '.join(config.variables))
+        if isinstance(config, PointValueSamplerConfig):
+            pp_sub_block.add_param("point", config.point)
 
-        if config.variables:  # For postprocessors that take a list of variables
-            pp_sub_block.add_param("variables", ' '.join(config.variables))  # MOOSE usually expects space-separated
-
-        # Add type-specific parameters by checking the instance type
-        if isinstance(config, PointValueSamplerConfig):  # Ensure PointValueSamplerConfig is imported
-            if config.point:  # point is mandatory for PointValueSamplerConfig as per its __init__
-                pp_sub_block.add_param("point", config.point)
-
-        # For LineValueSamplerConfig, its specific parameters (start_point, end_point, num_points, etc.)
-        # are already placed into its 'other_params' dictionary by its __init__ method.
-        # So, they will be handled by the loop below.
-
-        # Add all parameters from the 'other_params' dictionary
-        if config.other_params:
-            for p_name, p_val in config.other_params.items():
-                pp_sub_block.add_param(p_name, p_val)
+        for p_name, p_val in config.other_params.items():
+            pp_sub_block.add_param(p_name, p_val)
 
         pp_main_block.add_sub_block(pp_sub_block)
         print(f"Info: Added Postprocessor '{config.name}' of type '{config.pp_type}'.")
         return self
 
-    def _get_or_create_functions_moose_block(self) -> 'MooseBlock':
-        """
-        Retrieves the main 'Functions' MooseBlock from self._top_level_blocks,
-        or creates and adds it if it doesn't exist.
-        Internal helper method.
-        """
-        for block in self._top_level_blocks:
-            if block.block_name == "Functions":
-                return block
-        # If not found, create it
-        functions_block = MooseBlock("Functions")
-        self._top_level_blocks.append(functions_block)
-        return functions_block
-
+    # --- Functions ---
     def add_piecewise_function_from_data1d(self,
                                            name: str,
-                                           source_data1d: 'core1D.Data1D',
+                                           source_data1d: core1D.Data1D,
                                            other_params: Optional[Dict[str, Any]] = None) -> 'ModelBuilder':
-        """
-        Adds a PiecewiseConstant function to the [Functions] block,
-        using data from a fiberis Data1D object (or its subclasses).
-
-        The method assumes Data1D.taxis and Data1D.data are numpy arrays and
-        will be converted to lists for MOOSE's PiecewiseConstant 'x' and 'y' parameters.
-        It's assumed that Data1D.taxis represents the time points and Data1D.data
-        represents the corresponding function values, and that their lengths match
-        MOOSE's expectation for PiecewiseConstant (typically same length).
-
-        Args:
-            name (str): The user-chosen name for this MOOSE function sub-block
-                        (e.g., "injection_rate_history").
-            source_data1d (Data1D): An instance of the fiberis Data1D class (or its subclasses)
-                                    containing the time-series data.
-            other_params (Optional[Dict[str, Any]], optional): A dictionary for any other parameters
-                                                               specific to PiecewiseConstant
-                                                               (e.g., {"fill_value": "NEAREST"}).
-                                                               Defaults to None.
-
-        Returns:
-            ModelBuilder: Returns self for chaining.
-        """
+        """Adds a PiecewiseConstant function from a fiberis Data1D object."""
         if not isinstance(source_data1d, core1D.Data1D):
-            raise TypeError(f"source_data1d for function '{name}' must be an instance of Data1D or its subclass.")
-
-        functions_main_block = self._get_or_create_functions_moose_block()
-
+            raise TypeError(f"source_data1d for function '{name}' must be a Data1D instance.")
         if source_data1d.taxis is None or source_data1d.data is None:
-            raise ValueError(f"Data1D object '{source_data1d.name or 'Unnamed'}' for function '{name}' "
-                             "must have both 'taxis' and 'data' arrays defined.")
+            raise ValueError(f"Data1D object '{source_data1d.name or 'Unnamed'}' needs 'taxis' and 'data'.")
 
-        # Convert numpy arrays from Data1D to Python lists,
-        # as MooseBlock._format_value handles lists well for space-separated string conversion.
-        x_values_for_moose = list(source_data1d.taxis)
-        y_values_for_moose = list(source_data1d.data)
-
-        if len(x_values_for_moose) != len(y_values_for_moose):
-            # MOOSE's PiecewiseConstant often expects x and y to be the same length.
-            # If x has N points and y has N points, y[i] is value for x[i] <= t < x[i+1]
-            # and y[N-1] is for t >= x[N-1].
-            # Or, if y has N-1 points, y[i] is for x[i] <= t < x[i+1].
-            # The user of Data1D should ensure their taxis and data align with MOOSE's expectation.
-            # For now, we'll just pass them as is and let MOOSE handle it or error out if lengths are problematic.
-            print(f"Warning for PiecewiseConstant Function '{name}': "
-                  f"Length of taxis ({len(x_values_for_moose)}) and data ({len(y_values_for_moose)}) "
-                  f"from Data1D object '{source_data1d.name or 'Unnamed'}' are different ({len(x_values_for_moose)} vs {len(y_values_for_moose)}). "
-                  "Ensure this aligns with MOOSE's expectations for PiecewiseConstant's 'x' and 'y' parameters.")
-
+        functions_main_block = self._get_or_create_toplevel_moose_block("Functions")
         func_sub_block = MooseBlock(name, block_type="PiecewiseConstant")
-        func_sub_block.add_param("x", x_values_for_moose)
-        func_sub_block.add_param("y", y_values_for_moose)
+        func_sub_block.add_param("x", list(source_data1d.taxis))
+        func_sub_block.add_param("y", list(source_data1d.data))
 
         if other_params:
             for p_name, p_val in other_params.items():
                 func_sub_block.add_param(p_name, p_val)
-
         functions_main_block.add_sub_block(func_sub_block)
-        print(
-            f"Info: Added PiecewiseConstant Function '{name}' from Data1D source '{source_data1d.name or 'Unnamed'}'.")
+        print(f"Info: Added PiecewiseConstant Function '{name}' from Data1D source.")
         return self
 
-    def _get_or_create_fluid_properties_moose_block(self) -> 'MooseBlock':
-        """
-        Retrieves the main 'FluidProperties' MooseBlock from self._top_level_blocks,
-        or creates and adds it if it doesn't exist.
-        Internal helper method.
-        """
-        for block in self._top_level_blocks:
-            if block.block_name == "FluidProperties":
-                return block
-        # If not found, create it
-        fp_block = MooseBlock("FluidProperties")
-        self._top_level_blocks.append(fp_block)
-        return fp_block
-
-    def add_simple_fluid_properties(self, config: 'SimpleFluidPropertiesConfig') -> 'ModelBuilder':
-        """
-        Adds a SimpleFluidProperties material to the [FluidProperties] block
-        based on the provided config object.
-
-        If a sub-block with the same name (config.name) already exists under
-        [FluidProperties], it will be replaced.
-
-        Args:
-            config (SimpleFluidPropertiesConfig): A configuration object containing the
-                                                  parameters for the simple fluid.
-
-        Returns:
-            ModelBuilder: Returns self for chaining.
-        """
-
+    # --- Fluid Properties ---
+    def add_simple_fluid_properties(self, config: SimpleFluidPropertiesConfig) -> 'ModelBuilder':
+        """Adds a SimpleFluidProperties material based on a configuration object."""
         if not isinstance(config, SimpleFluidPropertiesConfig):
-            raise TypeError("config must be an instance of SimpleFluidPropertiesConfig.")
+            raise TypeError("config must be a SimpleFluidPropertiesConfig instance.")
 
-        fp_main_block = self._get_or_create_fluid_properties_moose_block()
+        fp_main_block = self._get_or_create_toplevel_moose_block("FluidProperties")
+        fp_main_block.sub_blocks = [sb for sb in fp_main_block.sub_blocks if sb.block_name != config.name]
 
-        # Remove existing fluid property with the same name to replace it
-        fp_main_block.sub_blocks = [
-            sb for sb in fp_main_block.sub_blocks if sb.block_name != config.name
-        ]
-
-        # Create the sub-block for this specific fluid property definition
         fp_sub_block = MooseBlock(config.name, block_type="SimpleFluidProperties")
-
-        # Add all mandatory parameters
         fp_sub_block.add_param("bulk_modulus", config.bulk_modulus)
         fp_sub_block.add_param("viscosity", config.viscosity)
         fp_sub_block.add_param("density0", config.density0)
-
-        # Add all optional parameters if they are not None
-        if config.thermal_expansion is not None:
-            fp_sub_block.add_param("thermal_expansion", config.thermal_expansion)
-        if config.cp is not None:
-            fp_sub_block.add_param("cp", config.cp)
-        if config.cv is not None:
-            fp_sub_block.add_param("cv", config.cv)
-        if config.porepressure_coefficient is not None:
-            fp_sub_block.add_param("porepressure_coefficient", config.porepressure_coefficient)
+        if config.thermal_expansion is not None: fp_sub_block.add_param("thermal_expansion", config.thermal_expansion)
+        if config.cp is not None: fp_sub_block.add_param("cp", config.cp)
+        if config.cv is not None: fp_sub_block.add_param("cv", config.cv)
+        if config.porepressure_coefficient is not None: fp_sub_block.add_param("porepressure_coefficient",
+                                                                               config.porepressure_coefficient)
 
         fp_main_block.add_sub_block(fp_sub_block)
         print(f"Info: Added SimpleFluidProperties '{config.name}'.")
@@ -1170,51 +621,41 @@ class ModelBuilder:
                                     solid_bulk_compliance: float,
                                     displacements: List[str] = ['disp_x', 'disp_y'],
                                     porepressure_variable: str = 'pp') -> 'ModelBuilder':
-        """
-        Builds the entire [Materials] and linked [FluidProperties] blocks based on stored configs
-        and provided global properties.
-
-        Args:
-            fluid_properties_name (str): The name of the SimpleFluidPropertiesConfig to use.
-            biot_coefficient (float): The Biot coefficient for poroelastic coupling.
-            solid_bulk_compliance (float): Compliance of the solid grain material.
-            displacements (List[str], optional): List of displacement variable names. Defaults to ['disp_x', 'disp_y'].
-            porepressure_variable (str, optional): Name of the porepressure variable. Defaults to 'pp'.
-        """
-        # 1. Add FluidProperties block from the stored config
+        """Builds the entire [Materials] block based on stored configs."""
         fluid_config = next((c for c in self.fluid_properties_configs if c.name == fluid_properties_name), None)
         if not fluid_config:
-            raise ValueError(f"FluidPropertiesConfig with name '{fluid_properties_name}' not found. "
-                             "Please add it first using add_fluid_properties_config().")
-        self._add_simple_fluid_properties_material(fluid_config)
+            raise ValueError(f"FluidPropertiesConfig '{fluid_properties_name}' not found.")
 
-        # 2. Add Materials block
+        # Ensure fluid properties block is added if not already
+        self.add_simple_fluid_properties(config=fluid_config)
+
         mat_block = self._get_or_create_toplevel_moose_block("Materials")
         all_configs = ([self.matrix_config] if self.matrix_config else []) + self.srv_configs + self.fracture_configs
         all_block_names = [c.name for c in all_configs if c]
 
-        # Porosity and Permeability per block
         for conf in all_configs:
             if not conf: continue
-            # Porosity
             poro_mat = MooseBlock(f"porosity_{conf.name}", "PorousFlowPorosityConst")
             poro_mat.add_param("porosity", conf.materials.porosity)
             poro_mat.add_param("block", conf.name)
             mat_block.add_sub_block(poro_mat)
-            # Permeability
+
             perm_mat = MooseBlock(f"permeability_{conf.name}", "PorousFlowPermeabilityConst")
             perm_mat.add_param("permeability", conf.materials.permeability)
             perm_mat.add_param("block", conf.name)
             mat_block.add_sub_block(perm_mat)
 
-        # Global materials that apply to all blocks
         mat_block.add_sub_block(MooseBlock("temperature", "PorousFlowTemperature"))
 
+        biot_mod_params = {
+            "biot_coefficient": biot_coefficient,
+            "solid_bulk_compliance": solid_bulk_compliance,
+            "fluid_bulk_modulus": fluid_config.bulk_modulus,
+            "block": ' '.join(all_block_names)
+        }
         biot_mod_mat = MooseBlock("biot_modulus", "PorousFlowConstantBiotModulus")
-        biot_mod_mat.add_param("biot_coefficient", biot_coefficient)
-        biot_mod_mat.add_param("solid_bulk_compliance", solid_bulk_compliance)
-        biot_mod_mat.add_param("fluid_bulk_modulus", fluid_config.bulk_modulus)
-        biot_mod_mat.add_param("block", ' '.join(all_block_names))
+        for p_name, p_val in biot_mod_params.items():
+            biot_mod_mat.add_param(p_name, p_val)
         mat_block.add_sub_block(biot_mod_mat)
 
         mat_block.add_sub_block(MooseBlock("massfrac", "PorousFlowMassFraction"))
@@ -1224,561 +665,291 @@ class ModelBuilder:
         fluid_mat.add_param("phase", 0)
         mat_block.add_sub_block(fluid_mat)
 
-        mat_block.add_sub_block(
-            MooseBlock("PS", "PorousFlow1PhaseFullySaturated", params={"porepressure": porepressure_variable}))
-        mat_block.add_sub_block(MooseBlock("relp", "PorousFlowRelativePermeabilityConst", params={"phase": 0}))
+        ps_mat = MooseBlock("PS", "PorousFlow1PhaseFullySaturated")
+        ps_mat.add_param("porepressure", porepressure_variable)
+        mat_block.add_sub_block(ps_mat)
+
+        relp_mat = MooseBlock("relp", "PorousFlowRelativePermeabilityConst")
+        relp_mat.add_param("phase", 0)
+        mat_block.add_sub_block(relp_mat)
+
         mat_block.add_sub_block(MooseBlock("eff_fluid_pressure_qp", "PorousFlowEffectiveFluidPressure"))
 
-        # Elasticity and Strain (using matrix properties as the base elasticity)
         elasticity_mat = MooseBlock("elasticity_tensor_matrix", "ComputeIsotropicElasticityTensor")
-        if self.matrix_config and self.matrix_config.materials.poissons_ratio is not None:
-            elasticity_mat.add_param("poissons_ratio", self.matrix_config.materials.poissons_ratio)
-        else:  # Fallback value if not provided
-            elasticity_mat.add_param("poissons_ratio", 0.2)
-
-        # ComputeIsotropicElasticityTensor can take youngs_modulus or bulk_modulus.
-        # We prioritize Young's Modulus if available, otherwise use a fallback bulk modulus.
-        if self.matrix_config and self.matrix_config.materials.youngs_modulus is not None:
-            elasticity_mat.add_param("youngs_modulus", self.matrix_config.materials.youngs_modulus)
-        else:  # Fallback value if not provided
-            elasticity_mat.add_param("bulk_modulus", 5.0E10)
+        youngs_modulus = self.matrix_config.materials.youngs_modulus if self.matrix_config and self.matrix_config.materials.youngs_modulus is not None else 5.0E10
+        poissons_ratio = self.matrix_config.materials.poissons_ratio if self.matrix_config and self.matrix_config.materials.poissons_ratio is not None else 0.2
+        elasticity_mat.add_param("youngs_modulus", youngs_modulus)
+        elasticity_mat.add_param("poissons_ratio", poissons_ratio)
         mat_block.add_sub_block(elasticity_mat)
 
         strain_mat = MooseBlock("strain", "ComputeSmallStrain")
         strain_mat.add_param("displacements", ' '.join(displacements))
         mat_block.add_sub_block(strain_mat)
 
-        mat_block.add_sub_block(MooseBlock("stress", "ComputeLinearElasticStress"))
-        mat_block.add_sub_block(MooseBlock("vol_strain", "PorousFlowVolumetricStrain"))
+        stress_mat = MooseBlock("stress", "ComputeLinearElasticStress")
+        mat_block.add_sub_block(stress_mat)
+
+        vol_strain_mat = MooseBlock("vol_strain", "PorousFlowVolumetricStrain")
+        mat_block.add_sub_block(vol_strain_mat)
 
         print("Info: Added poromechanics materials based on stored configurations.")
         return self
 
+    # --- AuxVariables and AuxKernels ---
+    def add_standard_tensor_aux_vars_and_kernels(self, tensor_map: Dict[str, str]):
+        """
+        Automatically generates AuxVariables and AuxKernels for visualizing 2D tensors.
+
+        Args:
+            tensor_map (Dict[str, str]): A map where key is the material property name of the
+                                        tensor (e.g., "stress", "strain") and value is the
+                                        base name for the aux variables (e.g., "stress", "total_strain").
+        """
+        aux_vars_block = self._get_or_create_toplevel_moose_block("AuxVariables")
+        aux_kernels_block = self._get_or_create_toplevel_moose_block("AuxKernels")
+
+        components = [('xx', 0, 0), ('xy', 0, 1), ('yx', 1, 0), ('yy', 1, 1)]
+
+        for material_tensor_name, aux_base_name in tensor_map.items():
+            for suffix, i, j in components:
+                var_name = f"{aux_base_name}_{suffix}"
+
+                # Create AuxVariable
+                aux_var = MooseBlock(var_name)
+                aux_var.add_param("order", "CONSTANT")
+                aux_var.add_param("family", "MONOMIAL")
+                aux_vars_block.add_sub_block(aux_var)
+
+                # Create AuxKernel
+                aux_kernel = MooseBlock(var_name, block_type="RankTwoAux")
+                aux_kernel.add_param("rank_two_tensor", material_tensor_name)
+                aux_kernel.add_param("variable", var_name)
+                aux_kernel.add_param("index_i", i)
+                aux_kernel.add_param("index_j", j)
+                aux_kernels_block.add_sub_block(aux_kernel)
+
+        print(f"Info: Added standard AuxVariables and AuxKernels for tensors: {list(tensor_map.keys())}")
+        return self
+
+    # --- Executioner, Preconditioning, and Outputs ---
+    def add_executioner_block(self,
+                              end_time: float,
+                              dt: float,
+                              time_stepper_type: str = "IterationAdaptiveDT",
+                              **kwargs) -> 'ModelBuilder':
+        """
+        Adds a standard [Executioner] block for transient simulations.
+
+        Args:
+            end_time (float): The simulation end time.
+            dt (float): The initial time step size.
+            time_stepper_type (str, optional): The type of time stepper. Defaults to "IterationAdaptiveDT".
+            **kwargs: Additional parameters to set on the [Executioner] block, overriding defaults.
+                      e.g., nl_rel_tol=1e-4, l_max_its=500
+        """
+        exec_block = self._get_or_create_toplevel_moose_block("Executioner")
+
+        # Set default parameters and then override with any user-provided kwargs
+        params = {
+            "type": "Transient",
+            "solve_type": "Newton",
+            "end_time": end_time,
+            "verbose": True,
+            "l_tol": 1e-3,
+            "l_max_its": 2000,
+            "nl_max_its": 200,
+            "nl_abs_tol": 1e-3,
+            "nl_rel_tol": 1e-3,
+            **kwargs
+        }
+        for p_name, p_val in params.items():
+            exec_block.add_param(p_name, p_val)
+
+        # Add the TimeStepper sub-block
+        ts_block = MooseBlock("TimeStepper", block_type=time_stepper_type)
+        ts_block.add_param("dt", dt)
+        if time_stepper_type == "IterationAdaptiveDT":
+            ts_block.add_param("timestep_limiting_function",
+                               'constant_step_1 constant_step_2 adaptive_step adaptive_final')
+            ts_block.add_param("force_step_every_function_point", True)
+
+        exec_block.add_sub_block(ts_block)
+        print("Info: Added [Executioner] block.")
+        return self
+
+    def add_preconditioning_block(self, active_preconditioner: str = 'mumps', **kwargs) -> 'ModelBuilder':
+        """
+        Adds a standard [Preconditioning] block with common options.
+
+        Args:
+            active_preconditioner (str, optional): The name of the active preconditioner sub-block.
+                                                   Defaults to 'mumps'.
+            **kwargs: Additional top-level parameters for the [Preconditioning] block itself.
+        """
+        precond_block = self._get_or_create_toplevel_moose_block("Preconditioning")
+        precond_block.add_param("active", active_preconditioner)
+
+        # Add mumps sub-block from the template
+        mumps_block = MooseBlock("mumps", block_type="SMP")
+        mumps_block.add_param("full", True)
+        mumps_block.add_param("petsc_options",
+                              '-snes_converged_reason -ksp_diagonal_scale -ksp_diagonal_scale_fix -ksp_gmres_modifiedgramschmidt -snes_linesearch_monitor')
+        mumps_block.add_param("petsc_options_iname",
+                              '-ksp_type -pc_type -pc_factor_mat_solver_package -pc_factor_shift_type')
+        mumps_block.add_param("petsc_options_value", 'gmres      lu         mumps                     NONZERO')
+        precond_block.add_sub_block(mumps_block)
+
+        # Add basic sub-block from the template
+        basic_block = MooseBlock("basic", block_type="SMP")
+        basic_block.add_param("full", True)
+        precond_block.add_sub_block(basic_block)
+
+        # Add preferred sub-block from the template
+        preferred_block = MooseBlock("preferred_but_might_not_be_installed", block_type="SMP")
+        preferred_block.add_param("full", True)
+        preferred_block.add_param("petsc_options_iname", '-pc_type -pc_factor_mat_solver_package')
+        preferred_block.add_param("petsc_options_value", ' lu         mumps')
+        precond_block.add_sub_block(preferred_block)
+
+        # Apply any additional top-level kwargs
+        for p_name, p_val in kwargs.items():
+            precond_block.add_param(p_name, p_val)
+
+        print(f"Info: Added [Preconditioning] block with '{active_preconditioner}' active.")
+        return self
+
+    def add_outputs_block(self, exodus: bool = True, csv: bool = True, **kwargs) -> 'ModelBuilder':
+        """
+        Adds a standard [Outputs] block.
+
+        Args:
+            exodus (bool, optional): If True, enables Exodus output. Defaults to True.
+            csv (bool, optional): If True, enables CSV output for postprocessors. Defaults to True.
+            **kwargs: Additional parameters to set on the [Outputs] block.
+        """
+        outputs_block = self._get_or_create_toplevel_moose_block("Outputs")
+        if exodus:
+            outputs_block.add_param("exodus", True)
+        if csv:
+            csv_block = MooseBlock("csv", block_type="CSV")
+            outputs_block.add_sub_block(csv_block)
+
+        for p_name, p_val in kwargs.items():
+            outputs_block.add_param(p_name, p_val)
+
+        print("Info: Added [Outputs] block.")
+        return self
+
     # --- File Generation ---
     def generate_input_file(self, output_filepath: str):
-        """
-        Generates the MOOSE input file by rendering all top-level MooseBlock objects.
-        This will render all the blocks in self._top_level_blocks.
-        """
-        self._finalize_mesh_block_renaming()  # Ensure renaming is the last mesh operation
-
+        """Generates the MOOSE input file by rendering all configured blocks."""
+        self._finalize_mesh_block_renaming()
         if not self._top_level_blocks:
-            # If only mesh operations were called, _top_level_blocks might still contain the Mesh block.
-            # Check specifically if the Mesh block has content.
-            mesh_block_found = any(
-                block.block_name == "Mesh" and (block.params or block.sub_blocks) for block in self._top_level_blocks)
-            if not mesh_block_found:
-                raise ValueError("No mesh operations defined. Cannot generate an empty input file.")
+            raise ValueError("No blocks defined. Cannot generate an empty input file.")
 
-        all_rendered_blocks = []
-        for block in self._top_level_blocks:
-            # Only render if the block actually has parameters or sub-blocks,
-            # or if it's a block type that can be empty (like a simple [Mesh] with no file).
-            # For now, we assume if it's in _top_level_blocks, it's meant to be rendered.
-            # The MooseBlock.render() handles its internal structure.
-            # The extra '[]' is for closing the top-level block itself.
-            all_rendered_blocks.append(block.render(indent_level=0) + "\n[]")
-
+        all_rendered_blocks = [block.render(indent_level=0) + "\n[]" for block in self._top_level_blocks]
         with open(output_filepath, 'w') as f:
-            f.write("# MOOSE input file generated by ModelBuilder (Mesh Part Only)\n\n")
+            f.write(f"# MOOSE input file generated by ModelBuilder for project: {self.project_name}\n\n")
             f.write("\n\n".join(all_rendered_blocks))
+        print(f"MOOSE input file generated: {output_filepath}")
 
-        print(f"MOOSE input file (Mesh part) generated by ModelBuilder: {output_filepath}")
-
-    # --- This would be the updated static method and __main__ in ModelBuilder ---
+    # --- Static Methods for Examples ---
     @staticmethod
-    def build_example_with_configs(output_filepath: str = "example_with_configs.i"):
-        builder = ModelBuilder(project_name="FracSRVExampleWithKernels")
+    def build_example_with_all_features(output_filepath: str = "example_full_build.i"):
+        """A static method to demonstrate building a more complete input file."""
+        import numpy as np
+        # This static method needs access to the config classes
+        from fiberis.moose.config import MatrixConfig, SRVConfig, HydraulicFractureConfig, ZoneMaterialProperties, \
+            PointValueSamplerConfig, LineValueSamplerConfig, SimpleFluidPropertiesConfig
+        from fiberis.analyzer.Data1D import core1D
 
-        # 1. Define main domain
-        builder.set_main_domain_parameters_2d(
-            domain_name="matrix",
-            length=1000, height=500,
-            num_elements_x=50, num_elements_y=25,
-            moose_block_id=0
-        )
+        builder = ModelBuilder(project_name="FullFracExample")
 
-        # 2. Define SRV
-        srv1_conf = SRVConfig(
-            name="SRV1",
-            length=300, height=80,
-            center_x=500, center_y=250,
-            permeability=1e-13  # Example permeability for SRV
-        )
-        builder.add_srv_zone_2d(srv_config=srv1_conf, target_moose_block_id=1, refinement_passes=1)
+        # 1. Define materials for different zones
+        matrix_mats = ZoneMaterialProperties(porosity=0.05, permeability="'1e-15 0 0 0 1e-15 0 0 0 1e-16'",
+                                             youngs_modulus=3e10, poissons_ratio=0.25)
+        srv_mats = ZoneMaterialProperties(porosity=0.1, permeability="'1e-13 0 0 0 1e-13 0 0 0 1e-14'")
+        frac_mats = ZoneMaterialProperties(porosity=0.5, permeability="'1e-10 0 0 0 1e-10 0 0 0 1e-11'")
+        water_props = SimpleFluidPropertiesConfig(name="water", bulk_modulus=2.2E9, viscosity=1.0E-3, density0=1000.0)
 
-        # Define another SRV for demonstration if needed, e.g., SRV2 for block 'srv srv2 srv3'
-        srv2_conf = SRVConfig(name="SRV2", length=50, height=50, center_x=400, center_y=200, permeability=1e-13)
-        builder.add_srv_zone_2d(srv_config=srv2_conf, target_moose_block_id=3)  # Assuming ID 3 for SRV2
+        # 2. Add configs to builder
+        builder.set_matrix_config(MatrixConfig(name="matrix", materials=matrix_mats))
+        builder.add_srv_config(
+            SRVConfig(name="SRV1", length=300, height=80, center_x=500, center_y=250, materials=srv_mats))
+        builder.add_fracture_config(
+            HydraulicFractureConfig(name="Frac1", length=200, height=0.2, center_x=500, center_y=250,
+                                    materials=frac_mats))
+        builder.add_fluid_properties_config(water_props)
 
-        srv3_conf = SRVConfig(name="SRV3", length=50, height=50, center_x=600, center_y=300, permeability=1e-13)
-        builder.add_srv_zone_2d(srv_config=srv3_conf, target_moose_block_id=4)  # Assuming ID 4 for SRV3
+        # 3. Build Mesh
+        builder.set_main_domain_parameters_2d(domain_name="matrix", length=1000, height=500, num_elements_x=50,
+                                              num_elements_y=25)
+        builder.add_srv_zone_2d(srv_config=builder.srv_configs[0], target_moose_block_id=1, refinement_passes=1)
+        builder.add_hydraulic_fracture_2d(fracture_config=builder.fracture_configs[0], target_moose_block_id=2,
+                                          refinement_passes=2)
+        builder.add_nodeset_by_coord(nodeset_op_name="injection_well_nodes", new_boundary_name="injection_well",
+                                     coordinates=(500, 250))
 
-        # 3. Define Fracture
-        frac1_conf = HydraulicFractureConfig(
-            name="Frac1",
-            length=200, height=0.2,
-            center_x=500, center_y=250,
-            orientation_angle=0,
-            permeability=1e-10  # Example permeability for Fracture
-        )
-        builder.add_hydraulic_fracture_2d(fracture_config=frac1_conf, target_moose_block_id=2, refinement_passes=2)
+        # 4. Add Variables
+        vars_block = builder._get_or_create_toplevel_moose_block("Variables")
+        pp_block = MooseBlock("pp")
+        pp_block.add_param("initial_condition", 26.4E6)
+        vars_block.add_sub_block(pp_block)
+        vars_block.add_sub_block(MooseBlock("disp_x"))
+        vars_block.add_sub_block(MooseBlock("disp_y"))
 
-        # 4. Add an injection point (Nodeset)
-        builder.add_nodeset_by_coord(
-            nodeset_op_name="injection_well_nodes",
-            new_boundary_name="injection_well",
-            coordinates=(500, 250)
-        )
+        # 5. Add Kernels
+        builder.add_time_derivative_kernel(variable="pp")
+        builder.add_porous_flow_darcy_base_kernel(kernel_name="flux", variable="pp")
+        builder.add_stress_divergence_tensor_kernel(kernel_name="grad_stress_x", variable="disp_x", component=0)
+        builder.add_stress_divergence_tensor_kernel(kernel_name="grad_stress_y", variable="disp_y", component=1)
+        # ... and other required kernels
 
-        # 5. Add GlobalParams (Example)
-        # Assuming a method add_global_params exists or will be added to ModelBuilder
-        # For now, let's imagine it creates a MooseBlock("GlobalParams") and adds params
-        # For this example, we'll skip direct GlobalParams addition to focus on Kernels
+        # 6. Build Materials Block
+        builder.add_poromechanics_materials(fluid_properties_name="water", biot_coefficient=0.7,
+                                            solid_bulk_compliance=1e-11)
 
-        # 6. Add Variables
-        # Assuming a method add_variables_block similar to previous discussions
-        # builder.add_variables_block([
-        #     {"name": "pp", "params": {"initial_condition": 26.4E6}},
-        #     {"name": "disp_x", "params": {"scaling": 1E-10}},
-        #     {"name": "disp_y", "params": {"scaling": 1E-10}}
-        # ])
-        # For now, let's assume these variables are expected by the kernels
+        # 7. Add Functions
+        pressure_data1d = core1D.Data1D(taxis=np.array([0, 10, 20]), data=np.array([27e6, 35e6, 30e6]))
+        builder.add_piecewise_function_from_data1d(name="injection_pressure_func", source_data1d=pressure_data1d)
 
-        # --- ADDING KERNELS, EXAMPLE ---
-        builder.add_time_derivative_kernel(variable="pp", kernel_name="dot")
-
-        # Assuming functions 'srv_diff' and 'frac_diff' will be defined in [Functions] block later
-        builder.add_function_diffusion_kernel(kernel_name="srv_diffusion",
-                                              variable="pp",
-                                              function_name="srv_diff",
-                                              block_names=["SRV1", "SRV2", "SRV3"])  # Using final block names
-
-        builder.add_function_diffusion_kernel(kernel_name="fracture_diffusion",
-                                              variable="pp",
-                                              function_name="frac_diff",
-                                              block_names="Frac1")  # Using final block name
-
-        builder.add_anisotropic_diffusion_kernel(kernel_name="matrix_diffusion",
-                                                 variable="pp",
-                                                 block_names="matrix",  # Using final block name
-                                                 tensor_coefficient="'0.00005894 0 0  0 0.00005894 0  0 0 0.00005894'")
-
-        builder.add_porous_flow_darcy_base_kernel(kernel_name="flux",
-                                                  variable="pp",
-                                                  gravity_vector="'0 0 0'")  # MOOSE expects strings for vectors
-
-        builder.add_stress_divergence_tensor_kernel(kernel_name="grad_stress_x",
-                                                    variable="disp_x",
-                                                    component=0)
-        builder.add_stress_divergence_tensor_kernel(kernel_name="grad_stress_y",
-                                                    variable="disp_y",
-                                                    component=1)
-
-        builder.add_porous_flow_effective_stress_coupling_kernel(kernel_name="poro_x",
-                                                                 variable="disp_x",
-                                                                 component=0,
-                                                                 biot_coefficient=0.7)
-        builder.add_porous_flow_effective_stress_coupling_kernel(kernel_name="poro_y",
-                                                                 variable="disp_y",
-                                                                 component=1,
-                                                                 biot_coefficient=0.7)
-
-        builder.add_porous_flow_mass_volumetric_expansion_kernel(kernel_name="vol_strain_rate_water",
-                                                                 variable="pp",
-                                                                 fluid_component=0)
-
-        # Note: if needed, you can add more kernels here following the same pattern. --Shenyao
-
-        # --- END OF KERNELS ---
-
-
-        # (Skipping Materials, BCs, Executioner, Outputs for this focused update)
-
-        # Generate the file
-        builder.generate_input_file(output_filepath)
-        print(f"Example file with Kernels generated: {output_filepath}")
-
-    @staticmethod
-    def build_example_with_ama(output_filepath: str = "example_with_ama.i"):
-        # First, ensure AdaptivityConfig, IndicatorConfig, MarkerConfig are importable
-        # from .configs import AdaptivityConfig, IndicatorConfig, MarkerConfig
-
-        builder = ModelBuilder(project_name="ExampleWithAMA")
-
-        # 1. Define main domain (copied from a previous example for context)
-        builder.set_main_domain_parameters_2d(
-            domain_name="matrix",
-            length=1000, height=500,
-            num_elements_x=20, num_elements_y=10,  # Coarser for AMA demo
-            moose_block_id=0
-        )
-
-        # 2. Define SRV (example)
-        srv_conf = SRVConfig(name="SRVZone", length=300, height=80, center_x=500, center_y=250)
-        builder.add_srv_zone_2d(srv_config=srv_conf, target_moose_block_id=1)
-
-        # 3. Define Fracture (example)
-        frac_conf = HydraulicFractureConfig(name="MainFrac", length=200, height=0.2, center_x=500, center_y=250)
-        builder.add_hydraulic_fracture_2d(fracture_config=frac_conf, target_moose_block_id=2)
-
-        # 4. Add Variables (minimal for AMA example, assuming 'pp' is used)
-        # This part would use your actual add_variables_block method
-        # For now, let's assume a MooseBlock for Variables is created and 'pp' is defined
-        # Example:
-        # var_block = builder._get_or_create_toplevel_moose_block("Variables") # Assuming such helper
-        # pp_var = MooseBlock("pp")
-        # pp_var.add_param("initial_condition", 0)
-        # var_block.add_sub_block(pp_var)
-
-        # --- Option 1: Enable AMA using default template settings ---
-        builder.set_adaptivity_options(
-            enable=True,
-            default_template_settings={
-                "monitored_variable": "pp",  # Assuming 'pp' is the primary variable
-                "refine_fraction": 0.4,
-                "coarsen_fraction": 0.1,
-                "steps": 3
-            }
-        )
-
-        # --- Option 2: Enable AMA using a detailed AdaptivityConfig object ---
-        # from fiberis.moose.config import IndicatorConfig, MarkerConfig
-        # indicator_conf = IndicatorConfig(name="pp_gradient", type="GradientJumpIndicator", params={"variable": "pp"})
-        # marker_conf = MarkerConfig(name="pp_frac_marker", type="ErrorFractionMarker", params={"indicator": "pp_gradient", "refine": 0.5, "coarsen":0.05})
-        # custom_ama_config = AdaptivityConfig(marker_to_use="pp_frac_marker", steps=2, indicators=[indicator_conf], markers=[marker_conf])
-        # builder.set_adaptivity_options(enable=True, config=custom_ama_config)
-
-        # --- Option 3: Disable AMA ---
-        # builder.set_adaptivity_options(enable=False)
-
-        # (Add other necessary blocks like Kernels, Executioner, Outputs for a runnable sim)
-        # For this example, we focus on generating the [Adaptivity] block structure.
-
-        builder.generate_input_file(output_filepath)
-        print(f"Example file with AMA settings generated: {output_filepath}")
-
-    @staticmethod
-    def build_example_with_bcs_uos(output_filepath: str = "example_with_bcs_uos.i"):
-        # This static method demonstrates the set_hydraulic_fracturing_bcs (scenario-specific)
-        builder = ModelBuilder(project_name="ExampleWithScenarioBCsAndUOs")
-
-        builder.set_main_domain_parameters_2d(
-            domain_name="matrix", length=1000, height=500,
-            num_elements_x=20, num_elements_y=10, moose_block_id=0
-        )
-        builder.add_nodeset_by_coord(
-            nodeset_op_name="injection_point_nodes", new_boundary_name="injection_well",
-            coordinates=(500, 250)
-        )
+        # 8. Add Boundary Conditions
         builder.set_hydraulic_fracturing_bcs(
             injection_well_boundary_name="injection_well",
-            injection_pressure_function_name="pres_func",
+            injection_pressure_function_name="injection_pressure_func",
             confine_disp_x_boundaries=["left", "right"],
             confine_disp_y_boundaries=["top", "bottom"],
         )
-        builder.set_porous_flow_dictator(porous_flow_variables="pp")
-        builder.generate_input_file(output_filepath)
-        print(f"Example file with scenario BCs and UserObjects generated: {output_filepath}")
 
-    @staticmethod
-    def build_example_with_individual_bcs(output_filepath: str = "example_with_individual_bcs.i"):
-        # This new static method demonstrates the generic add_boundary_condition
-        builder = ModelBuilder(project_name="ExampleWithIndividualBCsAndUOs")
+        # 9. Add AuxVariables and AuxKernels automatically
+        tensor_to_output_map = {
+            "stress": "stress",
+            "strain": "strain"
+        }
+        builder.add_standard_tensor_aux_vars_and_kernels(tensor_to_output_map)
 
-        # 1. Define main domain
-        builder.set_main_domain_parameters_2d(
-            domain_name="matrix", length=1000, height=500,
-            num_elements_x=20, num_elements_y=10, moose_block_id=0
-        )
-        # Assume sidesets 'left', 'right', 'top', 'bottom' are known.
-
-        # 2. Add nodeset for injection
-        builder.add_nodeset_by_coord(
-            nodeset_op_name="injection_point_nodes", new_boundary_name="injection_well",
-            coordinates=(500, 250)
-        )
-        # Optionally, add a production point nodeset
-        builder.add_nodeset_by_coord(
-            nodeset_op_name="production_point_nodes", new_boundary_name="production_well",
-            coordinates=(700, 250)  # Example coordinates
-        )
-
-        # 3. Add Boundary Conditions one by one using the generic method
-        # Injection pressure
-        builder.add_boundary_condition(
-            name="injection_pressure_bc",
-            bc_type="FunctionDirichletBC",
-            variable="pp",
-            boundary_name="injection_well",
-            params={"function": "pres_func"}
-        )
-        # Confine x-displacement on left and right boundaries
-        builder.add_boundary_condition(
-            name="confine_disp_x_lr",
-            bc_type="DirichletBC",
-            variable="disp_x",
-            boundary_name=["left", "right"],
-            params={"value": 0}
-        )
-        # Confine y-displacement on top boundary
-        builder.add_boundary_condition(
-            name="confine_disp_y_top",
-            bc_type="DirichletBC",
-            variable="disp_y",  # Assuming 'disp_y' variable
-            boundary_name="top",
-            params={"value": 0}
-        )
-        # Example: No-flow (zero Neumann) on bottom boundary for pressure
-        # builder.add_boundary_condition(
-        #     name="no_flow_bottom",
-        #     bc_type="NeumannBC",
-        #     variable="pp",
-        #     boundary_name="bottom",
-        #     params={"value": 0.0}
-        # )
-
-        # 4. Set PorousFlowDictator UserObject (using the specific method or generic add_user_object)
-        builder.set_porous_flow_dictator(
-            porous_flow_variables="pp",
-            num_fluid_phases=1,
-            num_fluid_components=1
-        )
-        # Alternatively, using the generic method:
-        # builder.add_user_object(
-        #     name="dictator",
-        #     uo_type="PorousFlowDictator",
-        #     params={
-        #         "porous_flow_vars": "pp",
-        #         "number_fluid_phases": 1,
-        #         "number_fluid_components": 1
-        #     }
-        # )
-
-        # (Placeholder for adding Variables, Functions, Kernels etc. for a runnable simulation)
-        # Example: Add a placeholder for Variables and Functions to make the output more complete
-        # This would use actual methods like add_variables_block, add_functions_block
-
-        # Placeholder Variables block
-        # vars_block_obj = builder._get_or_create_toplevel_moose_block("Variables") # Assuming such helper
-        # pp_var = MooseBlock("pp"); vars_block_obj.add_sub_block(pp_var)
-        # dx_var = MooseBlock("disp_x"); vars_block_obj.add_sub_block(dx_var)
-        # dy_var = MooseBlock("disp_y"); vars_block_obj.add_sub_block(dy_var)
-
-        # Placeholder Functions block (for pres_func)
-        # funcs_block_obj = builder._get_or_create_toplevel_moose_block("Functions")
-        # pres_func_obj = MooseBlock("pres_func", block_type="ParsedFunction")
-        # pres_func_obj.add_param("expression", "1.0e6 * t") # Dummy expression
-        # funcs_block_obj.add_sub_block(pres_func_obj)
-
-        builder.generate_input_file(output_filepath)
-        print(f"Example file with individual BCs and UserObjects settings generated: {output_filepath}")
-
-    @staticmethod
-    def build_example_with_postprocessors(output_filepath: str = "example_with_pps.i"):
-        # Ensure config classes are importable here if not globally
-        # from .configs import PointValueSamplerConfig, LineValueSamplerConfig, HydraulicFractureConfig, SRVConfig
-
-        builder = ModelBuilder(project_name="ExampleWithPostprocessors")
-
-        # 1. Define main domain (example setup)
-        builder.set_main_domain_parameters_2d(
-            domain_name="matrix",
-            length=1000, height=500,
-            num_elements_x=20, num_elements_y=10,
-            moose_block_id=0
-        )
-        # 2. Add a nodeset for injection (example setup)
-        builder.add_nodeset_by_coord(
-            nodeset_op_name="injection_point_nodes",
-            new_boundary_name="injection_well",
-            coordinates=(500.0, 0.0, 0.0)  # Using 3D coord for consistency with PointValue
-        )
-        builder.add_nodeset_by_coord(
-            nodeset_op_name="production_point_nodes",
-            new_boundary_name="production_well",
-            coordinates=(610.0, 0.0, 0.0)
-        )
-        # Example monitoring points (assuming 2D, z=0 for PointValue)
-        monitor_points_coords = [
-            (435.0, 5.0, 0.0), (545.0, 2.0, 0.0), (545.0, 5.0, 0.0),
-            (545.0, 10.0, 0.0), (545.0, 50.0, 0.0), (545.0, 200.0, 0.0),
-            (435.0, 2.0, 0.0)
-        ]
-
-        # (Placeholder: Add Variables block and define 'pp', 'strain_yy', 'diffusivity')
-        # builder.add_variables_block(...)
-        # This is crucial for postprocessors to work.
-
-        # 3. Add Postprocessors using the new config classes
-
-        # PointValue samplers for 'pp'
-        builder.add_postprocessor(PointValueSamplerConfig(name="pp_inj", variable="pp", point=(500.0, 0.0, 0.0)))
-        builder.add_postprocessor(PointValueSamplerConfig(name="pp_prod", variable="pp", point=(610.0, 0.0, 0.0)))
-        for i, coord in enumerate(monitor_points_coords):
-            builder.add_postprocessor(
-                PointValueSamplerConfig(name=f"pp_mon{i + 1}", variable="pp", point=coord)
-            )
-
-        # PointValue samplers for 'strain_yy'
+        # 10. Add Postprocessors
+        builder.add_postprocessor(PointValueSamplerConfig(name="pp_well", variable="pp", point=(500, 250, 0)))
         builder.add_postprocessor(
-            PointValueSamplerConfig(name="strain_yy_inj", variable="strain_yy", point=(500.0, 0.0, 0.0)))
-        builder.add_postprocessor(
-            PointValueSamplerConfig(name="strain_yy_prod", variable="strain_yy", point=(610.0, 0.0, 0.0)))
+            LineValueSamplerConfig(name="pressure_x_profile", variable="pp", start_point=(0, 250, 0),
+                                   end_point=(1000, 250, 0), num_points=101))
 
-        # PointValue sampler for 'diffusivity'
-        builder.add_postprocessor(
-            PointValueSamplerConfig(name="diff_inj", variable="diffusivity", point=(500.0, 0.0, 0.0)))
+        # 11. Add Executioner, Preconditioning, and Outputs
+        builder.add_executioner_block(end_time=3600, dt=100)
+        builder.add_preconditioning_block(active_preconditioner='mumps')
+        builder.add_outputs_block(exodus=True, csv=True)
 
-        # Example LineValueSampler
-        builder.add_postprocessor(LineValueSamplerConfig(
-            name="pressure_profile_x_axis",
-            variable="pp",
-            start_point=(0.0, 0.0, 0.0),
-            end_point=(1000.0, 0.0, 0.0),
-            num_points=51,
-            output_vector=True,  # To get CSV output of all points
-            execute_on="timestep_end"
-        ))
-
-        # Test the file path is working or not
-        import numpy as np
-        # 2. Create fiberis Data1D objects
-        time_pts1 = np.array([0.0, 10.0, 20.0, 30.0, 40.0])
-        pressure_values = np.array([1.0e6, 1.5e6, 2.0e6, 1.8e6, 1.0e6])  # Example pressure in Pa
-        pressure_data1d = core1D.Data1D(taxis=time_pts1, data=pressure_values, name="InjectionPressureSchedule")
-
-        time_pts2 = np.array([0.0, 5.0, 15.0, 25.0, 35.0, 40.0])
-        rate_values = np.array([0.001, 0.002, 0.0025, 0.0015, 0.0005, 0.0005])  # Example rate m3/s
-        rate_data1d = core1D.Data1D(taxis=time_pts2, data=rate_values, name="InjectionRate")
-
-        builder.add_piecewise_function_from_data1d(
-            name="pressure_func_from_data1d",
-            source_data1d=pressure_data1d
-        )
-
-        builder.add_piecewise_function_from_data1d(
-            name="rate_func_from_data1d",
-            source_data1d=rate_data1d,
-            other_params={"fill_value": "NEAREST"}  # Example of an optional parameter
-        )
-
-        # (Add other necessary blocks like Kernels, Functions, BCs, Executioner, Outputs
-        #  for a runnable simulation.)
-
+        # 12. Generate the file
         builder.generate_input_file(output_filepath)
-        print(f"Example file with Postprocessors generated: {output_filepath}")
+        print(f"Full example file generated: {output_filepath}")
 
-    @staticmethod
-    def build_example_with_data1d_functions(output_filepath: str = "example_with_data1d_funcs.i"):
-        import numpy as np
-        from fiberis.analyzer.Data1D import core1D
-        # Ensure Data1D is importable here if not globally
-        builder = ModelBuilder(project_name="ExampleWithData1DFunctions")
 
-        # 1. Define main domain (minimal for this example)
-        builder.set_main_domain_parameters_2d(
-            domain_name="matrix", length=100, height=100,
-            num_elements_x=2, num_elements_y=2
-        )
-
-        # 2. Create fiberis Data1D objects
-        time_pts1 = np.array([0.0, 10.0, 20.0, 30.0, 40.0])
-        pressure_values = np.array([1.0e6, 1.5e6, 2.0e6, 1.8e6, 1.0e6])  # Example pressure in Pa
-        pressure_data1d = core1D.Data1D(taxis=time_pts1, data=pressure_values, name="InjectionPressureSchedule")
-
-        time_pts2 = np.array([0.0, 5.0, 15.0, 25.0, 35.0, 40.0])
-        rate_values = np.array([0.001, 0.002, 0.0025, 0.0015, 0.0005, 0.0005])  # Example rate m3/s
-        rate_data1d = core1D.Data1D(taxis=time_pts2, data=rate_values, name="InjectionRate")
-
-        # 3. Add PiecewiseConstant functions to MOOSE using Data1D objects
-        builder.add_piecewise_function_from_data1d(
-            name="pressure_func_from_data1d",
-            source_data1d=pressure_data1d
-        )
-
-        builder.add_piecewise_function_from_data1d(
-            name="rate_func_from_data1d",
-            source_data1d=rate_data1d,
-            other_params={"fill_value": "NEAREST"}  # Example of an optional parameter
-        )
-
-        builder.generate_input_file(output_filepath)
-        print(f"Example file with Functions from Data1D generated: {output_filepath}")
-
-    @staticmethod
-    def build_example_with_fluid_props(output_filepath: str = "example_with_fluid_props.i"):
-        # Ensure SimpleFluidPropertiesConfig is importable here if not globally
-
-        builder = ModelBuilder(project_name="ExampleWithFluidProperties")
-
-        # 1. Define main domain (minimal for this example)
-        builder.set_main_domain_parameters_2d(
-            domain_name="matrix",
-            length=100, height=100,
-            num_elements_x=2, num_elements_y=2
-        )
-
-        # 2. Create a configuration object for the fluid properties
-        water_properties_config = SimpleFluidPropertiesConfig(
-            name="simple_fluid",
-            bulk_modulus=2.2E9,
-            viscosity=1.0E-3,
-            density0=1000.0,
-            thermal_expansion=0.0002,
-            cp=4194.0,
-            cv=4186.0,
-            porepressure_coefficient=1.0
-        )
-
-        # 3. Add the fluid properties to the model builder
-        builder.add_simple_fluid_properties(config=water_properties_config)
-
-        # (Add other necessary blocks like Variables, Kernels, Materials, etc.
-        #  for a runnable simulation. In MOOSE, FluidProperties are often used
-        #  in conjunction with Materials that reference them.)
-
-        builder.generate_input_file(output_filepath)
-        print(f"Example file with FluidProperties generated: {output_filepath}")
-
-if __name__ == '__main__':  # This should be at the bottom of your model_builder.py file
+if __name__ == '__main__':
     import os
-    # Ensure ModelBuilder and MooseBlock are correctly importable
-    # from .input_generator import MooseBlock # If ModelBuilder itself is not in the same file
 
     output_dir = "test_files/moose_input_file_test"
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
 
-    # 1. Test example with config
-    # example_kernels_output_file = os.path.join(output_dir, "example_model_with_kernels.i")
-    # ModelBuilder.build_example_with_configs(example_kernels_output_file)
-
-    # 2. Test AMA
-    # example_ama_output_file = os.path.join(output_dir, "model_builder_ama_output.i")
-    #
-    # # Call the static method to build and generate the file
-    # ModelBuilder.build_example_with_ama(example_ama_output_file)
-
-    # 3. Test the scenario-specific BCs setup
-    # example_scenario_bcs_output_file = os.path.join(output_dir, "model_builder_scenario_bcs_uos_output.i")
-    # ModelBuilder.build_example_with_bcs_uos(example_scenario_bcs_output_file)
-    #
-    # print("-" * 30)
-    #
-    # # Test the individual BCs setup
-    # example_individual_bcs_output_file = os.path.join(output_dir, "model_builder_individual_bcs_uos_output.i")
-    # ModelBuilder.build_example_with_individual_bcs(example_individual_bcs_output_file)
-
-    # 4. Test Postprocessors
-    example_pps_output_file = os.path.join(output_dir, "model_builder_postprocessors_output.i")
-    print(example_pps_output_file)
-    # Call the static method to build and generate the file
-    ModelBuilder.build_example_with_postprocessors(example_pps_output_file)
-
-    # 5. Test Data1D functions
-    # example_data1d_funcs_output_file = os.path.join(output_dir, "model_builder_functions_output.i")
-
-    # Call the static method to build and generate the file. IDK why this need absolute path.
-    # ModelBuilder.build_example_with_data1d_functions("/rcp/rcp42/home/shenyaojin/Documents/bakken_mariner/test_files/"
-    #                                                  "moose_input_file_test/model_builder_functions_output.i")
+    # Run the comprehensive example
+    full_example_file = os.path.join(output_dir, "model_builder_full_example.i")
+    ModelBuilder.build_example_with_all_features(full_example_file)
