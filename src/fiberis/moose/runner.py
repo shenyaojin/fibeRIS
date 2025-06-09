@@ -42,15 +42,15 @@ class MooseRunner:
             num_processors: int = 1,
             additional_args: Optional[List[str]] = None,
             moose_env_vars: Optional[Dict[str, str]] = None,
-            log_file_name: Optional[str] = "log.txt") -> Tuple[bool, str, str]: # Added log_file_name
+            log_file_name: Optional[str] = "log.txt") -> Tuple[bool, str, str]:  # Added log_file_name
         """
         Runs a MOOSE simulation and optionally logs STDOUT.
 
         Args:
             input_file_path (str): Path to the original MOOSE input file (.i).
             output_directory (Optional[str]): Directory where MOOSE simulation will be run
-                                              and output files will be saved. If None,
-                                              MOOSE runs in the input file's directory.
+                                             and output files will be saved. If None,
+                                             MOOSE runs in the input file's directory.
             num_processors (int): Number of processors to use for the simulation (for MPI).
             additional_args (Optional[List[str]]): A list of additional command-line arguments
                                                    to pass to the MOOSE executable.
@@ -75,21 +75,29 @@ class MooseRunner:
             os.makedirs(output_directory, exist_ok=True)
             cwd = os.path.abspath(output_directory)
             staged_input_file_path = os.path.join(cwd, input_file_basename)
-            try:
-                shutil.copy(original_input_file_abspath, staged_input_file_path)
-                print(f"Staged input file '{input_file_basename}' in working directory '{cwd}'")
-            except Exception as e:
-                error_message = f"Failed to copy input file to output directory: {e}"
-                print(error_message)
-                return False, "", error_message
+
+            # --- BUG FIX: Check if source and destination are the same file ---
+            if original_input_file_abspath != staged_input_file_path:
+                try:
+                    shutil.copy(original_input_file_abspath, staged_input_file_path)
+                    print(f"Staged input file '{input_file_basename}' in working directory '{cwd}'")
+                except shutil.SameFileError:
+                    # This case is handled by the check above, but we keep it for safety.
+                    print(
+                        f"Input file '{input_file_basename}' is already in the working directory '{cwd}'. No copy needed.")
+                except Exception as e:
+                    error_message = f"Failed to copy input file to output directory: {e}"
+                    print(error_message)
+                    return False, "", error_message
+            else:
+                print(
+                    f"Input file '{input_file_basename}' is already in the working directory '{cwd}'. No copy needed.")
+
             input_file_path_for_cmd = input_file_basename
         else:
             cwd = os.path.abspath(os.path.dirname(original_input_file_abspath) or '.')
             input_file_path_for_cmd = input_file_basename
-            # In this case, staged_input_file_path is not strictly needed for cleanup logic later,
-            # but we might refer to the original if no output_directory is set.
             staged_input_file_path = original_input_file_abspath
-
 
         command = []
         if num_processors > 1:
@@ -128,7 +136,7 @@ class MooseRunner:
             self.last_run_returncode = returncode
 
             # --- Logging STDOUT ---
-            if log_file_name and stdout: # Only write if log_file_name is provided and stdout is not empty
+            if log_file_name and stdout:  # Only write if log_file_name is provided and stdout is not empty
                 log_file_path = os.path.join(cwd, log_file_name)
                 try:
                     with open(log_file_path, 'w') as lf:
@@ -138,8 +146,8 @@ class MooseRunner:
                     print(f"Warning: Could not write STDOUT to log file {log_file_path}: {e}")
             # --- End Logging STDOUT ---
 
-
-            if output_directory and os.path.exists(staged_input_file_path) and staged_input_file_path != original_input_file_abspath:
+            if output_directory and os.path.exists(
+                    staged_input_file_path) and staged_input_file_path != original_input_file_abspath:
                 try:
                     # os.remove(staged_input_file_path) # Optional: remove the copied .i file
                     # print(f"Cleaned up staged input file: {staged_input_file_path}")

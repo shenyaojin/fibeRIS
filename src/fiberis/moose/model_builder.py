@@ -2,7 +2,10 @@
 # having to interact with the input file directly.
 # Higher-level API for building MOOSE input files, compared to input_generator.py and input_editor.py.
 # Shenyao Jin, shenyaojin@mines.edu, 05/24/2025
-# fiberis/moose/model_builder.py
+#
+# Refactored by Gemini on 06/06/2025 to use a single generic block getter.
+# Corrected by Gemini on 06/06/2025 to fix various errors and add features.
+# Final fix by Gemini on 06/07/2025 to correctly separate Postprocessors and VectorPostprocessors.
 
 from typing import List, Dict, Any, Union, Tuple, Optional
 
@@ -56,19 +59,11 @@ class ModelBuilder:
     def _get_or_create_toplevel_moose_block(self, block_name: str) -> MooseBlock:
         """
         Retrieves a top-level MooseBlock from the internal list by its name,
-        or creates and adds it if it doesn't exist. This is the generic
-        getter for all top-level blocks (e.g., [Mesh], [Kernels], [BCs]).
-
-        Args:
-            block_name (str): The name of the top-level block (e.g., "Mesh", "Kernels").
-
-        Returns:
-            MooseBlock: The existing or newly created MooseBlock instance.
+        or creates and adds it if it doesn't exist.
         """
         for block in self._top_level_blocks:
             if block.block_name == block_name:
                 return block
-        # If not found, create it, add it to the list, and return it.
         new_block = MooseBlock(block_name)
         self._top_level_blocks.append(new_block)
         return new_block
@@ -91,9 +86,40 @@ class ModelBuilder:
 
     def add_fluid_properties_config(self, config: 'SimpleFluidPropertiesConfig') -> 'ModelBuilder':
         """Adds or replaces a fluid properties configuration."""
-        # Remove existing config with the same name before adding to avoid duplicates
         self.fluid_properties_configs = [c for c in self.fluid_properties_configs if c.name != config.name]
         self.fluid_properties_configs.append(config)
+        return self
+
+    # --- Variables ---
+    def add_variables(self, variables: List[Union[str, Dict[str, Any]]]) -> 'ModelBuilder':
+        """
+        Adds variables to the [Variables] block.
+
+        Args:
+            variables (List[Union[str, Dict[str, Any]]]): A list where each item
+                is either a string (the variable name) or a dictionary.
+                If a dictionary, it must have a 'name' key and can have an
+                optional 'params' key which is a dict of parameters.
+                e.g., ["pp", {"name": "disp_x", "params": {"initial_condition": 0.0}}]
+        """
+        vars_block = self._get_or_create_toplevel_moose_block("Variables")
+        for var_config in variables:
+            if isinstance(var_config, str):
+                var_block = MooseBlock(var_config)
+                vars_block.add_sub_block(var_block)
+            elif isinstance(var_config, dict):
+                name = var_config.get("name")
+                if not name:
+                    raise ValueError("Variable configuration dictionary must have a 'name' key.")
+                var_block = MooseBlock(name)
+                if "params" in var_config:
+                    for p_name, p_val in var_config["params"].items():
+                        var_block.add_param(p_name, p_val)
+                vars_block.add_sub_block(var_block)
+            else:
+                raise TypeError(f"Invalid variable configuration: {var_config}")
+
+        print(f"Info: Added {len(variables)} variables.")
         return self
 
     # --- Mesh Construction ---
@@ -355,38 +381,6 @@ class ModelBuilder:
         kernels_main_block.add_sub_block(kernel_obj)
         return self
 
-    # --- Variables ---
-    def add_variables(self, variables: List[Union[str, Dict[str, Any]]]) -> 'ModelBuilder':
-        """
-        Adds variables to the [Variables] block.
-
-        Args:
-            variables (List[Union[str, Dict[str, Any]]]): A list where each item
-                is either a string (the variable name) or a dictionary.
-                If a dictionary, it must have a 'name' key and can have an
-                optional 'params' key which is a dict of parameters.
-                e.g., ["pp", {"name": "disp_x", "params": {"initial_condition": 0.0}}]
-        """
-        vars_block = self._get_or_create_toplevel_moose_block("Variables")
-        for var_config in variables:
-            if isinstance(var_config, str):
-                var_block = MooseBlock(var_config)
-                vars_block.add_sub_block(var_block)
-            elif isinstance(var_config, dict):
-                name = var_config.get("name")
-                if not name:
-                    raise ValueError("Variable configuration dictionary must have a 'name' key.")
-                var_block = MooseBlock(name)
-                if "params" in var_config:
-                    for p_name, p_val in var_config["params"].items():
-                        var_block.add_param(p_name, p_val)
-                vars_block.add_sub_block(var_block)
-            else:
-                raise TypeError(f"Invalid variable configuration: {var_config}")
-
-        print(f"Info: Added {len(variables)} variables.")
-        return self
-
     # --- Adaptivity ---
     def set_adaptivity_options(self,
                                enable: bool = True,
@@ -574,30 +568,47 @@ class ModelBuilder:
         }
         return self.add_user_object(name=dictator_name, uo_type="PorousFlowDictator", params=params)
 
-    # --- Postprocessors ---
+    # --- Postprocessors and VectorPostprocessors ---
     def add_postprocessor(self, config: PostprocessorConfigBase) -> 'ModelBuilder':
-        """Adds a postprocessor based on a configuration object."""
+        """
+        Adds a postprocessor based on the provided config object, correctly
+        routing it to [Postprocessors] or [VectorPostprocessors].
+        """
         if not isinstance(config, PostprocessorConfigBase):
             raise TypeError("config must be derived from PostprocessorConfigBase.")
 
-        pp_main_block = self._get_or_create_toplevel_moose_block("Postprocessors")
+        # Determine the correct top-level block based on the config type
+        if isinstance(config, LineValueSamplerConfig):
+            main_block = self._get_or_create_toplevel_moose_block("VectorPostprocessors")
+        elif isinstance(config, PointValueSamplerConfig):
+            main_block = self._get_or_create_toplevel_moose_block("Postprocessors")
+        else:
+            # Default to Postprocessors for any other type, with a warning.
+            main_block = self._get_or_create_toplevel_moose_block("Postprocessors")
+            print(f"Warning: Postprocessor type for '{config.name}' not explicitly handled. "
+                  "Defaulting to [Postprocessors] block. This may be incorrect for vector types.")
+
         pp_sub_block = MooseBlock(config.name, block_type=config.pp_type)
 
         if config.execute_on:
             exec_on = ' '.join(config.execute_on) if isinstance(config.execute_on, list) else config.execute_on
             pp_sub_block.add_param("execute_on", exec_on)
-        if config.variable:
+
+        # This logic handles both single 'variable' and plural 'variables' attributes from the config.
+        # It ensures that even if a config holds a list, it's converted to a space-separated string for MOOSE.
+        if hasattr(config, 'variables') and config.variables:
+            pp_sub_block.add_param("variable", ' '.join(config.variables))
+        elif hasattr(config, 'variable') and config.variable:
             pp_sub_block.add_param("variable", config.variable)
-        if config.variables:
-            pp_sub_block.add_param("variables", ' '.join(config.variables))
-        if isinstance(config, PointValueSamplerConfig):
+
+        if isinstance(config, PointValueSamplerConfig) and config.point:
             pp_sub_block.add_param("point", config.point)
 
         for p_name, p_val in config.other_params.items():
             pp_sub_block.add_param(p_name, p_val)
 
-        pp_main_block.add_sub_block(pp_sub_block)
-        print(f"Info: Added Postprocessor '{config.name}' of type '{config.pp_type}'.")
+        main_block.add_sub_block(pp_sub_block)
+        print(f"Info: Added '{config.name}' to [{main_block.block_name}].")
         return self
 
     # --- Functions ---
@@ -658,7 +669,6 @@ class ModelBuilder:
         if not fluid_config:
             raise ValueError(f"FluidPropertiesConfig '{fluid_properties_name}' not found.")
 
-        # Ensure fluid properties block is added if not already
         self.add_simple_fluid_properties(config=fluid_config)
 
         mat_block = self._get_or_create_toplevel_moose_block("Materials")
@@ -777,27 +787,17 @@ class ModelBuilder:
             dt (float): The initial time step size.
             time_stepper_type (str, optional): The type of time stepper. Defaults to "IterationAdaptiveDT".
             **kwargs: Additional parameters to set on the [Executioner] block, overriding defaults.
-                      e.g., nl_rel_tol=1e-4, l_max_its=500
         """
         exec_block = self._get_or_create_toplevel_moose_block("Executioner")
 
-        # Set default parameters and then override with any user-provided kwargs
         params = {
-            "type": "Transient",
-            "solve_type": "Newton",
-            "end_time": end_time,
-            "verbose": True,
-            "l_tol": 1e-3,
-            "l_max_its": 2000,
-            "nl_max_its": 200,
-            "nl_abs_tol": 1e-3,
-            "nl_rel_tol": 1e-3,
+            "type": "Transient", "solve_type": "Newton", "end_time": end_time, "verbose": True,
+            "l_tol": 1e-3, "l_max_its": 2000, "nl_max_its": 200, "nl_abs_tol": 1e-3, "nl_rel_tol": 1e-3,
             **kwargs
         }
         for p_name, p_val in params.items():
             exec_block.add_param(p_name, p_val)
 
-        # Add the TimeStepper sub-block
         ts_block = MooseBlock("TimeStepper", block_type=time_stepper_type)
         ts_block.add_param("dt", dt)
         if time_stepper_type == "IterationAdaptiveDT":
@@ -812,16 +812,10 @@ class ModelBuilder:
     def add_preconditioning_block(self, active_preconditioner: str = 'mumps', **kwargs) -> 'ModelBuilder':
         """
         Adds a standard [Preconditioning] block with common options.
-
-        Args:
-            active_preconditioner (str, optional): The name of the active preconditioner sub-block.
-                                                   Defaults to 'mumps'.
-            **kwargs: Additional top-level parameters for the [Preconditioning] block itself.
         """
         precond_block = self._get_or_create_toplevel_moose_block("Preconditioning")
         precond_block.add_param("active", active_preconditioner)
 
-        # Add mumps sub-block from the template
         mumps_block = MooseBlock("mumps", block_type="SMP")
         mumps_block.add_param("full", True)
         mumps_block.add_param("petsc_options",
@@ -831,19 +825,16 @@ class ModelBuilder:
         mumps_block.add_param("petsc_options_value", 'gmres      lu         mumps                     NONZERO')
         precond_block.add_sub_block(mumps_block)
 
-        # Add basic sub-block from the template
         basic_block = MooseBlock("basic", block_type="SMP")
         basic_block.add_param("full", True)
         precond_block.add_sub_block(basic_block)
 
-        # Add preferred sub-block from the template
         preferred_block = MooseBlock("preferred_but_might_not_be_installed", block_type="SMP")
         preferred_block.add_param("full", True)
         preferred_block.add_param("petsc_options_iname", '-pc_type -pc_factor_mat_solver_package')
         preferred_block.add_param("petsc_options_value", ' lu         mumps')
         precond_block.add_sub_block(preferred_block)
 
-        # Apply any additional top-level kwargs
         for p_name, p_val in kwargs.items():
             precond_block.add_param(p_name, p_val)
 
@@ -853,11 +844,6 @@ class ModelBuilder:
     def add_outputs_block(self, exodus: bool = True, csv: bool = True, **kwargs) -> 'ModelBuilder':
         """
         Adds a standard [Outputs] block.
-
-        Args:
-            exodus (bool, optional): If True, enables Exodus output. Defaults to True.
-            csv (bool, optional): If True, enables CSV output for postprocessors. Defaults to True.
-            **kwargs: Additional parameters to set on the [Outputs] block.
         """
         outputs_block = self._get_or_create_toplevel_moose_block("Outputs")
         if exodus:
@@ -890,14 +876,13 @@ class ModelBuilder:
     def build_example_with_all_features(output_filepath: str = "example_full_build.i"):
         """A static method to demonstrate building a more complete input file."""
         import numpy as np
-        # This static method needs access to the config classes
         from fiberis.moose.config import MatrixConfig, SRVConfig, HydraulicFractureConfig, ZoneMaterialProperties, \
             PointValueSamplerConfig, LineValueSamplerConfig, SimpleFluidPropertiesConfig
         from fiberis.analyzer.Data1D import core1D
 
         builder = ModelBuilder(project_name="FullFracExample")
 
-        # 1. Define materials for different zones
+        # 1. Define materials and fluid properties
         matrix_mats = ZoneMaterialProperties(porosity=0.05, permeability="'1e-15 0 0 0 1e-15 0 0 0 1e-16'",
                                              youngs_modulus=3e10, poissons_ratio=0.25)
         srv_mats = ZoneMaterialProperties(porosity=0.1, permeability="'1e-13 0 0 0 1e-13 0 0 0 1e-14'")
@@ -913,7 +898,7 @@ class ModelBuilder:
                                     materials=frac_mats))
         builder.add_fluid_properties_config(water_props)
 
-        # 3. Add Variables using the new method
+        # 3. Add primary variables
         builder.add_variables([
             {"name": "pp", "params": {"initial_condition": 26.4E6}},
             "disp_x",
@@ -934,7 +919,6 @@ class ModelBuilder:
         builder.add_porous_flow_darcy_base_kernel(kernel_name="flux", variable="pp")
         builder.add_stress_divergence_tensor_kernel(kernel_name="grad_stress_x", variable="disp_x", component=0)
         builder.add_stress_divergence_tensor_kernel(kernel_name="grad_stress_y", variable="disp_y", component=1)
-        # ... and other required kernels
 
         # 6. Build Materials Block
         builder.add_poromechanics_materials(fluid_properties_name="water", biot_coefficient=0.7,
@@ -953,17 +937,18 @@ class ModelBuilder:
         )
 
         # 9. Add AuxVariables and AuxKernels automatically
-        tensor_to_output_map = {
-            "stress": "stress",
-            "strain": "strain"
-        }
+        tensor_to_output_map = {"stress": "stress", "strain": "strain"}
         builder.add_standard_tensor_aux_vars_and_kernels(tensor_to_output_map)
 
-        # 10. Add Postprocessors
+        # 10. Add Postprocessors and VectorPostprocessors
         builder.add_postprocessor(PointValueSamplerConfig(name="pp_well", variable="pp", point=(500, 250, 0)))
-        builder.add_postprocessor(
-            LineValueSamplerConfig(name="pressure_x_profile", variable="pp", start_point=(0, 250, 0),
-                                   end_point=(1000, 250, 0), num_points=101))
+        builder.add_postprocessor(LineValueSamplerConfig(
+            name="pressure_x_profile",
+            variable="pp stress_yy",
+            start_point=(0, 250, 0),
+            end_point=(1000, 250, 0),
+            num_points=101
+        ))
 
         # 11. Add Executioner, Preconditioning, and Outputs
         builder.add_executioner_block(end_time=3600, dt=100)
@@ -972,7 +957,7 @@ class ModelBuilder:
 
         # 12. Generate the file
         builder.generate_input_file(output_filepath)
-        print(f"Full example file generated: {output_filepath}")
+
 
 if __name__ == '__main__':
     import os
@@ -980,6 +965,5 @@ if __name__ == '__main__':
     output_dir = "test_files/moose_input_file_test"
     os.makedirs(output_dir, exist_ok=True)
 
-    # Run the comprehensive example
     full_example_file = os.path.join(output_dir, "model_builder_full_example.i")
     ModelBuilder.build_example_with_all_features(full_example_file)
