@@ -355,6 +355,38 @@ class ModelBuilder:
         kernels_main_block.add_sub_block(kernel_obj)
         return self
 
+    # --- Variables ---
+    def add_variables(self, variables: List[Union[str, Dict[str, Any]]]) -> 'ModelBuilder':
+        """
+        Adds variables to the [Variables] block.
+
+        Args:
+            variables (List[Union[str, Dict[str, Any]]]): A list where each item
+                is either a string (the variable name) or a dictionary.
+                If a dictionary, it must have a 'name' key and can have an
+                optional 'params' key which is a dict of parameters.
+                e.g., ["pp", {"name": "disp_x", "params": {"initial_condition": 0.0}}]
+        """
+        vars_block = self._get_or_create_toplevel_moose_block("Variables")
+        for var_config in variables:
+            if isinstance(var_config, str):
+                var_block = MooseBlock(var_config)
+                vars_block.add_sub_block(var_block)
+            elif isinstance(var_config, dict):
+                name = var_config.get("name")
+                if not name:
+                    raise ValueError("Variable configuration dictionary must have a 'name' key.")
+                var_block = MooseBlock(name)
+                if "params" in var_config:
+                    for p_name, p_val in var_config["params"].items():
+                        var_block.add_param(p_name, p_val)
+                vars_block.add_sub_block(var_block)
+            else:
+                raise TypeError(f"Invalid variable configuration: {var_config}")
+
+        print(f"Info: Added {len(variables)} variables.")
+        return self
+
     # --- Adaptivity ---
     def set_adaptivity_options(self,
                                enable: bool = True,
@@ -881,7 +913,14 @@ class ModelBuilder:
                                     materials=frac_mats))
         builder.add_fluid_properties_config(water_props)
 
-        # 3. Build Mesh
+        # 3. Add Variables using the new method
+        builder.add_variables([
+            {"name": "pp", "params": {"initial_condition": 26.4E6}},
+            "disp_x",
+            "disp_y"
+        ])
+
+        # 4. Build Mesh
         builder.set_main_domain_parameters_2d(domain_name="matrix", length=1000, height=500, num_elements_x=50,
                                               num_elements_y=25)
         builder.add_srv_zone_2d(srv_config=builder.srv_configs[0], target_moose_block_id=1, refinement_passes=1)
@@ -889,14 +928,6 @@ class ModelBuilder:
                                           refinement_passes=2)
         builder.add_nodeset_by_coord(nodeset_op_name="injection_well_nodes", new_boundary_name="injection_well",
                                      coordinates=(500, 250))
-
-        # 4. Add Variables
-        vars_block = builder._get_or_create_toplevel_moose_block("Variables")
-        pp_block = MooseBlock("pp")
-        pp_block.add_param("initial_condition", 26.4E6)
-        vars_block.add_sub_block(pp_block)
-        vars_block.add_sub_block(MooseBlock("disp_x"))
-        vars_block.add_sub_block(MooseBlock("disp_y"))
 
         # 5. Add Kernels
         builder.add_time_derivative_kernel(variable="pp")
@@ -942,7 +973,6 @@ class ModelBuilder:
         # 12. Generate the file
         builder.generate_input_file(output_filepath)
         print(f"Full example file generated: {output_filepath}")
-
 
 if __name__ == '__main__':
     import os
