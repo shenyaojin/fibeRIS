@@ -128,7 +128,7 @@ class ModelBuilder:
                                       length: float,
                                       height: float,
                                       num_elements_x: int,
-                                      num_elements_y: int,
+                                      num_elements_y: Optional[int],  # allow num_elements_y to be None
                                       xmin: float = 0.0,
                                       ymin: float = 0.0,
                                       moose_block_id: int = 0,
@@ -143,11 +143,16 @@ class ModelBuilder:
         self._block_id_to_name_map[self._main_domain_block_id] = domain_name
 
         gmg_op_name = self._generate_unique_op_name(f"{domain_name}_base_mesh", existing_sub_block_names)
+
+        # --- START: Corrected Parameters Logic ---
         gmg_params = {
-            "dim": 2, "nx": num_elements_x, "ny": num_elements_y,
+            "dim": 2, "nx": num_elements_x,
             "xmin": xmin, "xmax": xmin + length, "ymin": ymin, "ymax": ymin + height,
             **additional_generator_params
         }
+        if num_elements_y is not None:
+            gmg_params['ny'] = num_elements_y
+        # --- END: Corrected Parameters Logic ---
 
         gmg_sub_block = MooseBlock(gmg_op_name, block_type="GeneratedMeshGenerator")
         for p_name, p_val in gmg_params.items():
@@ -157,114 +162,108 @@ class ModelBuilder:
         self._last_mesh_op_name_within_mesh_block = gmg_op_name
         return self
 
+    # In ModelBuilder class
     def add_hydraulic_fracture_2d(self,
                                   fracture_config: HydraulicFractureConfig,
-                                  target_moose_block_id: Optional[int] = None,
-                                  refinement_passes: Optional[int] = None) -> 'ModelBuilder':
-        """Adds a hydraulic fracture to the 2D model based on its configuration."""
-        mesh_moose_block = self._get_or_create_toplevel_moose_block("Mesh")
-        existing_sub_block_names = [sb.block_name for sb in mesh_moose_block.sub_blocks]
-
-        if fracture_config.orientation_angle != 0.0:
-            print(f"Warning: HydraulicFractureConfig '{fracture_config.name}' has orientation_angle "
-                  f"{fracture_config.orientation_angle}°. API currently supports axis-aligned fractures.")
-
+                                  target_moose_block_id: Optional[int] = None) -> 'ModelBuilder':
+        """
+        (Refactored) Adds a hydraulic fracture subdomain. Refinement is now handled separately.
+        All subdomain generators now operate on the base mesh.
+        """
+        # Block ID management (this part was fixed before and is correct)
         block_id_to_use = target_moose_block_id
         if block_id_to_use is None:
             block_id_to_use = self._next_available_block_id
-            self._next_available_block_id += 1
         elif block_id_to_use == self._main_domain_block_id or block_id_to_use in self._block_id_to_name_map:
-            new_id = self._next_available_block_id
-            print(f"Warning: target_moose_block_id {block_id_to_use} for fracture '{fracture_config.name}' "
-                  f"is already in use. Assigning new ID: {new_id}")
-            block_id_to_use = new_id
-            self._next_available_block_id += 1
+            raise ValueError(f"Block ID {block_id_to_use} for '{fracture_config.name}' is already in use.")
         self._block_id_to_name_map[block_id_to_use] = fracture_config.name
+        self._next_available_block_id = max(self._next_available_block_id, block_id_to_use + 1)
+
+        # --- Key Change: Create BBox from the BASE MESH, not the last operation ---
+        mesh_moose_block = self._get_or_create_toplevel_moose_block("Mesh")
+        base_mesh_name = "matrix_base_mesh"  # Assuming this is the name set in set_main_domain_parameters_2d
+
+        op_name = f"{fracture_config.name}_bbox"
+        bbox_sub_block = MooseBlock(op_name, block_type="SubdomainBoundingBoxGenerator")
+        bbox_sub_block.add_param("input", base_mesh_name)
+        bbox_sub_block.add_param("block_id", block_id_to_use)
 
         half_length = fracture_config.length / 2.0
-        half_height = fracture_config.height / 2.0  # Aperture
+        half_height = fracture_config.height / 2.0
+        bbox_sub_block.add_param("bottom_left",
+                                 f"'{fracture_config.center_x - half_length} {fracture_config.center_y - half_height} 0.00000001'")
+        bbox_sub_block.add_param("top_right",
+                                 f"'{fracture_config.center_x + half_length} {fracture_config.center_y + half_height} 0'")
 
-        bbox_op_name = self._generate_unique_op_name(f"{fracture_config.name}_bbox", existing_sub_block_names)
-        bbox_params = {
-            "bottom_left": f"{fracture_config.center_x - half_length} {fracture_config.center_y - half_height} 0.00000001",
-            "top_right": f"{fracture_config.center_x + half_length} {fracture_config.center_y + half_height} 0",
-            "block_id": block_id_to_use,
-            "input": self._last_mesh_op_name_within_mesh_block
-        }
-        bbox_sub_block = MooseBlock(bbox_op_name, block_type="SubdomainBoundingBoxGenerator")
-        for p_name, p_val in bbox_params.items():
-            bbox_sub_block.add_param(p_name, p_val)
         mesh_moose_block.add_sub_block(bbox_sub_block)
-        current_op_chain_head = bbox_op_name
-
-        if refinement_passes is not None and refinement_passes > 0:
-            existing_sub_block_names.append(current_op_chain_head)
-            refine_op_name = self._generate_unique_op_name(f"{fracture_config.name}_refine", existing_sub_block_names)
-            refine_params = {
-                "block": str(block_id_to_use),
-                "refinement": f"{refinement_passes} {refinement_passes}",
-                "input": current_op_chain_head
-            }
-            refine_sub_block = MooseBlock(refine_op_name, block_type="RefineBlockGenerator")
-            for p_name, p_val in refine_params.items():
-                refine_sub_block.add_param(p_name, p_val)
-            mesh_moose_block.add_sub_block(refine_sub_block)
-            current_op_chain_head = refine_op_name
-
-        self._last_mesh_op_name_within_mesh_block = current_op_chain_head
+        self._last_mesh_op_name_within_mesh_block = op_name  # Still track the last op, for refinement to use later
         return self
 
+    # In ModelBuilder class
     def add_srv_zone_2d(self,
                         srv_config: SRVConfig,
-                        target_moose_block_id: Optional[int] = None,
-                        refinement_passes: Optional[int] = None) -> 'ModelBuilder':
-        """Adds a Stimulated Reservoir Volume (SRV) zone to the 2D model."""
-        mesh_moose_block = self._get_or_create_toplevel_moose_block("Mesh")
-        existing_sub_block_names = [sb.block_name for sb in mesh_moose_block.sub_blocks]
-
+                        target_moose_block_id: Optional[int] = None) -> 'ModelBuilder':
+        """
+        (Refactored) Adds an SRV subdomain. Refinement is now handled separately.
+        All subdomain generators now operate on the base mesh.
+        """
+        # Block ID management
         block_id_to_use = target_moose_block_id
         if block_id_to_use is None:
             block_id_to_use = self._next_available_block_id
-            self._next_available_block_id += 1
         elif block_id_to_use == self._main_domain_block_id or block_id_to_use in self._block_id_to_name_map:
-            new_id = self._next_available_block_id
-            print(f"Warning: target_moose_block_id {block_id_to_use} for SRV '{srv_config.name}' "
-                  f"is already in use. Assigning new ID: {new_id}")
-            block_id_to_use = new_id
-            self._next_available_block_id += 1
+            raise ValueError(f"Block ID {block_id_to_use} for '{srv_config.name}' is already in use.")
         self._block_id_to_name_map[block_id_to_use] = srv_config.name
+        self._next_available_block_id = max(self._next_available_block_id, block_id_to_use + 1)
+
+        # --- Key Change: Create BBox from the BASE MESH ---
+        mesh_moose_block = self._get_or_create_toplevel_moose_block("Mesh")
+        base_mesh_name = "matrix_base_mesh"
+
+        op_name = f"{srv_config.name}_bbox"
+        bbox_sub_block = MooseBlock(op_name, block_type="SubdomainBoundingBoxGenerator")
+        bbox_sub_block.add_param("input", base_mesh_name)
+        bbox_sub_block.add_param("block_id", block_id_to_use)
 
         half_length = srv_config.length / 2.0
         half_height = srv_config.height / 2.0
+        bbox_sub_block.add_param("bottom_left",
+                                 f"'{srv_config.center_x - half_length} {srv_config.center_y - half_height} 0.00000001'")
+        bbox_sub_block.add_param("top_right",
+                                 f"'{srv_config.center_x + half_length} {srv_config.center_y + half_height} 0'")
 
-        bbox_op_name = self._generate_unique_op_name(f"{srv_config.name}_bbox", existing_sub_block_names)
-        bbox_params = {
-            "bottom_left": f"{srv_config.center_x - half_length} {srv_config.center_y - half_height} 0.00000001",
-            "top_right": f"{srv_config.center_x + half_length} {srv_config.center_y + half_height} 0",
-            "block_id": block_id_to_use,
-            "input": self._last_mesh_op_name_within_mesh_block
-        }
-        bbox_sub_block = MooseBlock(bbox_op_name, block_type="SubdomainBoundingBoxGenerator")
-        for p_name, p_val in bbox_params.items():
-            bbox_sub_block.add_param(p_name, p_val)
         mesh_moose_block.add_sub_block(bbox_sub_block)
-        current_op_chain_head = bbox_op_name
+        # This architecture does not chain BBox generators, but we need to know the last one for the refinement step
+        self._last_mesh_op_name_within_mesh_block = op_name
+        return self
 
-        if refinement_passes is not None and refinement_passes > 0:
-            existing_sub_block_names.append(current_op_chain_head)
-            refine_op_name = self._generate_unique_op_name(f"{srv_config.name}_refine", existing_sub_block_names)
-            refine_params = {
-                "block": str(block_id_to_use),
-                "refinement": f"{refinement_passes} {refinement_passes}",
-                "input": current_op_chain_head
-            }
-            refine_sub_block = MooseBlock(refine_op_name, block_type="RefineBlockGenerator")
-            for p_name, p_val in refine_params.items():
-                refine_sub_block.add_param(p_name, p_val)
-            mesh_moose_block.add_sub_block(refine_sub_block)
-            current_op_chain_head = refine_op_name
+    # In ModelBuilder class
+    def refine_blocks(self,
+                      op_name: str,
+                      block_ids: List[int],
+                      refinement_levels: Union[int, List[int]]) -> 'ModelBuilder':
+        """Adds a dedicated refinement step for one or more blocks."""
+        mesh_moose_block = self._get_or_create_toplevel_moose_block("Mesh")
 
-        self._last_mesh_op_name_within_mesh_block = current_op_chain_head
+        refine_sub_block = MooseBlock(op_name, block_type="RefineBlockGenerator")
+        refine_sub_block.add_param("input", self._last_mesh_op_name_within_mesh_block)
+
+        str_block_ids = ' '.join(map(str, block_ids))
+        refine_sub_block.add_param("block", f"'{str_block_ids}'")
+
+        if isinstance(refinement_levels, list):
+            if len(refinement_levels) != len(block_ids):
+                raise ValueError("Length of refinement_levels must match length of block_ids.")
+            str_ref_levels = ' '.join(map(str, refinement_levels))
+            refine_sub_block.add_param("refinement", f"'{str_ref_levels}'")
+        else:  # is an int
+            # If one level is given for multiple blocks, create a list of the same level
+            levels = [refinement_levels] * len(block_ids)
+            str_ref_levels = ' '.join(map(str, levels))
+            refine_sub_block.add_param("refinement", f"'{str_ref_levels}'")
+
+        mesh_moose_block.add_sub_block(refine_sub_block)
+        self._last_mesh_op_name_within_mesh_block = op_name
         return self
 
     def add_nodeset_by_coord(self,
@@ -624,8 +623,8 @@ class ModelBuilder:
 
         functions_main_block = self._get_or_create_toplevel_moose_block("Functions")
         func_sub_block = MooseBlock(name, block_type="PiecewiseConstant")
-        func_sub_block.add_param("x", list(source_data1d.taxis))
-        func_sub_block.add_param("y", list(source_data1d.data))
+        func_sub_block.add_param("x", ' '.join(map(str, source_data1d.taxis)))
+        func_sub_block.add_param("y", ' '.join(map(str, source_data1d.data)))
 
         if other_params:
             for p_name, p_val in other_params.items():
