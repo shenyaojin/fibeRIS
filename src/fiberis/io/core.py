@@ -1,9 +1,11 @@
 # This file contains the core class for data input/output.
 # Read data from different types of file(s).
 # Write data npz(or csv) to make it faster to read.
+# Refactored to use InfoManagementSystem for logging.
 
 import datetime
 from abc import abstractmethod, ABC
+from fiberis.utils.history_utils import InfoManagementSystem
 
 
 class DataIO(ABC):
@@ -17,7 +19,8 @@ class DataIO(ABC):
         self.taxis = None
         self.data = None
         self.start_time = None
-        self._history = []
+        # Replace the simple list-based history with the InfoManagementSystem
+        self.log_system = InfoManagementSystem()
 
     @abstractmethod
     def read(self, **kwargs):
@@ -46,16 +49,32 @@ class DataIO(ABC):
         pass
 
     # History recording
-    def record_log(self, *args):
-        time_now = datetime.datetime.now()
-        # Concatenate all arguments
-        msg = " ".join(map(str, args)) + f" | Time: {time_now}"
-        # Append the formatted message to the history
-        self.history.append(msg)
+    def record_log(self, *args, level: str = "INFO"):
+        """
+        Records a log message using the InfoManagementSystem.
+
+        This method replaces the previous implementation that manually handled
+        timestamps and history lists.
+
+        Parameters:
+        ----------
+        *args :
+            One or more objects to be converted to strings and concatenated
+            to form the log message.
+        level : str, optional
+            The severity level of the log (e.g., "INFO", "WARNING", "ERROR").
+            Defaults to "INFO".
+        """
+        # Concatenate all arguments into a single message string
+        msg = " ".join(map(str, args))
+        # Add the record to the logging system
+        self.log_system.add_record(msg, level=level)
 
     def print_log(self):
-        for msg in self.history:
-            print(msg)
+        """
+        Prints all recorded logs to the console using the InfoManagementSystem.
+        """
+        self.log_system.print_records()
 
     # Set the data manually
 

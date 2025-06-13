@@ -79,18 +79,17 @@ class ModelBuilder:
         return unique_op_name
 
     # --- NEW MESHING ARCHITECTURE BASED ON OUR DISCUSSION ---
-
     def build_stitched_mesh_for_fractures(self,
                                           fracture_y_coords: List[float],
                                           domain_bounds: Tuple[float, float],
                                           domain_length: float = 1000.0,
                                           nx: int = 100,
-                                          ny_per_layer: int = 40,
+                                          ny_per_layer_half: int = 20,
                                           bias_y: float = 1.3):
         """
         NEW MAIN MESH FUNCTION: Builds a high-quality base mesh by creating and
         stitching together multiple layers, with mesh refinement biased towards
-        the specified fracture locations.
+        the specified fracture locations using a simplified bias approach WITHOUT ROTATION.
         """
         ymin, ymax = domain_bounds
         all_y_points = sorted(list(set([ymin, ymax] + fracture_y_coords)), reverse=True)
@@ -98,48 +97,49 @@ class ModelBuilder:
         stitched_layer_names = []
         for i in range(len(all_y_points) - 1):
             y_upper, y_lower = all_y_points[i], all_y_points[i + 1]
+            y_mid = (y_upper + y_lower) / 2.0
 
-            # Using the create-rotate-stitch technique for symmetric biasing
-            # Create a base panel for this layer
-            panel_params = {'dim': 2, 'nx': nx, 'ny': ny_per_layer, 'bias_y': bias_y,
-                            'xmin': 0, 'xmax': domain_length, 'ymin': 0, 'ymax': y_upper - y_lower}
-            panel_name = self._add_generic_mesh_generator(f"layer{i}_panel_base", "GeneratedMeshGenerator",
-                                                          panel_params, input_op="")
+            panel_a_params = {'dim': 2, 'nx': nx, 'ny': ny_per_layer_half, 'bias_y': 1 / bias_y,
+                              'xmin': 0, 'xmax': domain_length, 'ymin': y_mid, 'ymax': y_upper}
+            panel_a_name = self._add_generic_mesh_generator(f"layer{i}_panel_a", "GeneratedMeshGenerator",
+                                                            panel_a_params, input_op="")
 
-            # Rotate a copy of it
-            panel_rot_params = {'transform': 'ROTATE', 'vector_value': "'0 0 180'"}
-            panel_rot_name = self._add_generic_mesh_generator(f"layer{i}_panel_rot", "TransformGenerator",
-                                                              panel_rot_params, input_op=panel_name)
+            panel_b_params = {'dim': 2, 'nx': nx, 'ny': ny_per_layer_half, 'bias_y': bias_y,
+                              'xmin': 0, 'xmax': domain_length, 'ymin': y_lower, 'ymax': y_mid}
+            panel_b_name = self._add_generic_mesh_generator(f"layer{i}_panel_b", "GeneratedMeshGenerator",
+                                                            panel_b_params, input_op="")
 
-            # Stitch the original and rotated panels
-            layer_stitch_params = {'inputs': f"'{panel_name} {panel_rot_name}'", 'clear_stitched_boundary_ids': True,
-                                   'stitch_boundaries_pairs': "'bottom bottom'"}
-            stitched_halflayer_name = self._add_generic_mesh_generator(f"stitched_halflayer_{i}",
-                                                                       "StitchedMeshGenerator", layer_stitch_params,
-                                                                       input_op="")
+            layer_stitch_params = {
+                'inputs': f"'{panel_a_name} {panel_b_name}'",
+                'stitch_boundaries_pairs': "'bottom top'"
+            }
+            stitched_layer_name = self._add_generic_mesh_generator(f"stitched_layer_{i}", "StitchedMeshGenerator",
+                                                                   layer_stitch_params, input_op="")
+            stitched_layer_names.append(stitched_layer_name)
 
-            # Shift the stitched layer to its correct vertical position
-            shift_params = {'translation': f"'0 {y_lower} 0'"}
-            shifted_layer_name = self._add_generic_mesh_generator(f"final_layer_{i}", "TransformGenerator",
-                                                                  shift_params, input_op=stitched_halflayer_name)
-            stitched_layer_names.append(shifted_layer_name)
-
-        # Stitch all final layers together
+        # *** CORRECTED SEQUENTIAL STITCHING LOGIC ***
         if len(stitched_layer_names) > 1:
-            final_stitch_params = {'inputs': f"'{' '.join(stitched_layer_names)}'", 'clear_stitched_boundary_ids': True}
-            self._add_generic_mesh_generator("stitched_base_mesh", "StitchedMeshGenerator", final_stitch_params,
-                                             input_op="")
-        else:
+            current_mesh_name = stitched_layer_names[0]
+            for i in range(1, len(stitched_layer_names)):
+                next_layer_name = stitched_layer_names[i]
+                final_stitch_params = {
+                    'inputs': f"'{current_mesh_name} {next_layer_name}'",
+                    'stitch_boundaries_pairs': "'bottom top'",
+                    'clear_stitched_boundary_ids': True
+                }
+                # The input_op="" is crucial to tell the helper that these are root operations in their own chain
+                current_mesh_name = self._add_generic_mesh_generator(f"final_stitch_{i - 1}", "StitchedMeshGenerator",
+                                                                     final_stitch_params, input_op="")
+            self._last_mesh_op_name_within_mesh_block = current_mesh_name
+        elif stitched_layer_names:
             self._last_mesh_op_name_within_mesh_block = stitched_layer_names[0]
 
         print(f"Info: Successfully built stitched base mesh '{self._last_mesh_op_name_within_mesh_block}'.")
         return self
 
     def add_hydraulic_fracture_2d(self, config: HydraulicFractureConfig, target_block_id: int):
-        """REFACTORED: Adds a fracture subdomain, maintaining the operation chain."""
         self._block_id_to_name_map[target_block_id] = config.name
         self._next_available_block_id = max(self._next_available_block_id, target_block_id + 1)
-
         half_length, half_height = config.length / 2.0, config.height / 2.0
         params = {'block_id': target_block_id,
                   'bottom_left': f"'{config.center_x - half_length} {config.center_y - half_height} 0'",
@@ -148,10 +148,8 @@ class ModelBuilder:
         return self
 
     def add_srv_zone_2d(self, config: SRVConfig, target_block_id: int):
-        """REFACTORED: Adds an SRV subdomain, maintaining the operation chain."""
         self._block_id_to_name_map[target_block_id] = config.name
         self._next_available_block_id = max(self._next_available_block_id, target_block_id + 1)
-
         half_length, half_height = config.length / 2.0, config.height / 2.0
         params = {'block_id': target_block_id,
                   'bottom_left': f"'{config.center_x - half_length} {config.center_y - half_height} 0'",
@@ -160,7 +158,6 @@ class ModelBuilder:
         return self
 
     def refine_blocks(self, op_name: str, block_ids: List[int], refinement_levels: Union[int, List[int]]):
-        """REFACTORED: Adds a dedicated refinement step for one or more blocks."""
         str_block_ids = ' '.join(map(str, block_ids))
         if isinstance(refinement_levels, list):
             if len(refinement_levels) != len(block_ids):
@@ -168,10 +165,19 @@ class ModelBuilder:
             str_ref_levels = ' '.join(map(str, refinement_levels))
         else:
             str_ref_levels = ' '.join(map(str, [refinement_levels] * len(block_ids)))
-
         params = {'block': f"'{str_block_ids}'", 'refinement': f"'{str_ref_levels}'"}
         self._add_generic_mesh_generator(op_name, "RefineBlockGenerator", params)
         return self
+
+    def _finalize_mesh_block_renaming(self):
+        if self._block_id_to_name_map:
+            if 0 not in self._block_id_to_name_map:
+                self._block_id_to_name_map[0] = (self.matrix_config.name if self.matrix_config else "matrix")
+            old_block_ids = sorted(self._block_id_to_name_map.keys())
+            new_block_names = [self._block_id_to_name_map[bid] for bid in old_block_ids]
+            params = {'old_block': f"'{' '.join(map(str, old_block_ids))}'",
+                      'new_block': f"'{' '.join(new_block_names)}'"}
+            self._add_generic_mesh_generator("final_block_rename", "RenameBlockGenerator", params)
 
     def add_named_boundary(self, new_boundary_name: str, bottom_left: Tuple, top_right: Tuple):
         """NEW: Creates a named boundary (sideset) using a bounding box. Essential for reliable BCs."""
@@ -180,20 +186,6 @@ class ModelBuilder:
                   'top_right': f"'{top_right[0]} {top_right[1]} {top_right[2]}'"}
         self._add_generic_mesh_generator(f"create_{new_boundary_name}", "SideSetBoundingBoxGenerator", params)
         return self
-
-    def _finalize_mesh_block_renaming(self):
-        """Adds a RenameBlockGenerator at the end of the mesh operations."""
-        if self._block_id_to_name_map:
-            # Add block 0 for the matrix if it's not already defined
-            if 0 not in self._block_id_to_name_map:
-                self._block_id_to_name_map[0] = (self.matrix_config.name if self.matrix_config else "matrix")
-
-            old_block_ids = sorted(self._block_id_to_name_map.keys())
-            new_block_names = [self._block_id_to_name_map[bid] for bid in old_block_ids]
-
-            params = {'old_block': f"'{' '.join(map(str, old_block_ids))}'",
-                      'new_block': f"'{' '.join(new_block_names)}'"}
-            self._add_generic_mesh_generator("final_block_rename", "RenameBlockGenerator", params)
 
     # --- PRESERVED METHODS FROM ORIGINAL FILE ---
 
