@@ -25,21 +25,15 @@ class ModelBuilder:
         """Initializes the ModelBuilder."""
         self.project_name: str = project_name
         self._top_level_blocks: List[MooseBlock] = []
-
-        # Configuration object storage
         self.matrix_config: Optional[MatrixConfig] = None
         self.srv_configs: List[SRVConfig] = []
         self.fracture_configs: List[HydraulicFractureConfig] = []
         self.fluid_properties_configs: List[SimpleFluidPropertiesConfig] = []
-
-        # Mesh specific tracking
         self._block_id_to_name_map: Dict[int, str] = {}
         self._next_available_block_id: int = 1
-        self._main_domain_block_id: int = 0
         self._last_mesh_op_name_within_mesh_block: Optional[str] = None
 
     def _generate_unique_op_name(self, base_name: str, existing_names_list: List[str]) -> str:
-        """Generates a unique name for an operation."""
         count = 1
         op_name = base_name
         while op_name in existing_names_list:
@@ -48,7 +42,6 @@ class ModelBuilder:
         return op_name
 
     def _get_or_create_toplevel_moose_block(self, block_name: str) -> MooseBlock:
-        """Retrieves or creates a top-level MooseBlock."""
         for block in self._top_level_blocks:
             if block.block_name == block_name:
                 return block
@@ -58,27 +51,19 @@ class ModelBuilder:
 
     def _add_generic_mesh_generator(self, op_name: str, op_type: str, params: Dict[str, Any],
                                     input_op: Optional[str] = "USE_LAST") -> str:
-        """Internal helper to add any mesh generator and robustly track the input chain."""
         mesh_moose_block = self._get_or_create_toplevel_moose_block("Mesh")
-
         all_op_names = [sb.block_name for sb in mesh_moose_block.sub_blocks]
         unique_op_name = self._generate_unique_op_name(op_name, all_op_names)
-
         op_sub_block = MooseBlock(unique_op_name, block_type=op_type)
-
         final_input_op = self._last_mesh_op_name_within_mesh_block if input_op == "USE_LAST" else input_op
-
         if final_input_op and 'input' not in params and not (op_type == 'StitchedMeshGenerator' and 'inputs' in params):
             op_sub_block.add_param("input", final_input_op)
-
         for p_name, p_val in params.items():
             op_sub_block.add_param(p_name, p_val)
-
         mesh_moose_block.add_sub_block(op_sub_block)
         self._last_mesh_op_name_within_mesh_block = unique_op_name
         return unique_op_name
 
-    # --- NEW MESHING ARCHITECTURE BASED ON OUR DISCUSSION ---
     def build_stitched_mesh_for_fractures(self,
                                           fracture_y_coords: List[float],
                                           domain_bounds: Tuple[float, float],
@@ -86,11 +71,6 @@ class ModelBuilder:
                                           nx: int = 100,
                                           ny_per_layer_half: int = 20,
                                           bias_y: float = 1.3):
-        """
-        NEW MAIN MESH FUNCTION: Builds a high-quality base mesh by creating and
-        stitching together multiple layers, with mesh refinement biased towards
-        the specified fracture locations using a simplified bias approach WITHOUT ROTATION.
-        """
         ymin, ymax = domain_bounds
         all_y_points = sorted(list(set([ymin, ymax] + fracture_y_coords)), reverse=True)
 
@@ -99,35 +79,28 @@ class ModelBuilder:
             y_upper, y_lower = all_y_points[i], all_y_points[i + 1]
             y_mid = (y_upper + y_lower) / 2.0
 
-            panel_a_params = {'dim': 2, 'nx': nx, 'ny': ny_per_layer_half, 'bias_y': 1 / bias_y,
-                              'xmin': 0, 'xmax': domain_length, 'ymin': y_mid, 'ymax': y_upper}
+            panel_a_params = {'dim': 2, 'nx': nx, 'ny': ny_per_layer_half, 'bias_y': 1 / bias_y, 'xmin': 0,
+                              'xmax': domain_length, 'ymin': y_mid, 'ymax': y_upper}
             panel_a_name = self._add_generic_mesh_generator(f"layer{i}_panel_a", "GeneratedMeshGenerator",
                                                             panel_a_params, input_op="")
 
-            panel_b_params = {'dim': 2, 'nx': nx, 'ny': ny_per_layer_half, 'bias_y': bias_y,
-                              'xmin': 0, 'xmax': domain_length, 'ymin': y_lower, 'ymax': y_mid}
+            panel_b_params = {'dim': 2, 'nx': nx, 'ny': ny_per_layer_half, 'bias_y': bias_y, 'xmin': 0,
+                              'xmax': domain_length, 'ymin': y_lower, 'ymax': y_mid}
             panel_b_name = self._add_generic_mesh_generator(f"layer{i}_panel_b", "GeneratedMeshGenerator",
                                                             panel_b_params, input_op="")
 
-            layer_stitch_params = {
-                'inputs': f"'{panel_a_name} {panel_b_name}'",
-                'stitch_boundaries_pairs': "'bottom top'"
-            }
+            layer_stitch_params = {'inputs': f"'{panel_a_name} {panel_b_name}'",
+                                   'stitch_boundaries_pairs': "'bottom top'"}
             stitched_layer_name = self._add_generic_mesh_generator(f"stitched_layer_{i}", "StitchedMeshGenerator",
                                                                    layer_stitch_params, input_op="")
             stitched_layer_names.append(stitched_layer_name)
 
-        # *** CORRECTED SEQUENTIAL STITCHING LOGIC ***
         if len(stitched_layer_names) > 1:
             current_mesh_name = stitched_layer_names[0]
             for i in range(1, len(stitched_layer_names)):
                 next_layer_name = stitched_layer_names[i]
-                final_stitch_params = {
-                    'inputs': f"'{current_mesh_name} {next_layer_name}'",
-                    'stitch_boundaries_pairs': "'bottom top'",
-                    'clear_stitched_boundary_ids': True
-                }
-                # The input_op="" is crucial to tell the helper that these are root operations in their own chain
+                final_stitch_params = {'inputs': f"'{current_mesh_name} {next_layer_name}'",
+                                       'stitch_boundaries_pairs': "'bottom top'", 'clear_stitched_boundary_ids': True}
                 current_mesh_name = self._add_generic_mesh_generator(f"final_stitch_{i - 1}", "StitchedMeshGenerator",
                                                                      final_stitch_params, input_op="")
             self._last_mesh_op_name_within_mesh_block = current_mesh_name
@@ -135,6 +108,14 @@ class ModelBuilder:
             self._last_mesh_op_name_within_mesh_block = stitched_layer_names[0]
 
         print(f"Info: Successfully built stitched base mesh '{self._last_mesh_op_name_within_mesh_block}'.")
+        return self
+
+    def add_global_params(self, params: Dict[str, Any]) -> 'ModelBuilder':
+        """Adds a [GlobalParams] block to the input file."""
+        gp_block = self._get_or_create_toplevel_moose_block("GlobalParams")
+        for p_name, p_val in params.items():
+            gp_block.add_param(p_name, p_val)
+        print("Info: Added [GlobalParams] block.")
         return self
 
     def add_hydraulic_fracture_2d(self, config: HydraulicFractureConfig, target_block_id: int):
@@ -160,8 +141,8 @@ class ModelBuilder:
     def refine_blocks(self, op_name: str, block_ids: List[int], refinement_levels: Union[int, List[int]]):
         str_block_ids = ' '.join(map(str, block_ids))
         if isinstance(refinement_levels, list):
-            if len(refinement_levels) != len(block_ids):
-                raise ValueError("Length of refinement_levels must match length of block_ids.")
+            if len(refinement_levels) != len(block_ids): raise ValueError(
+                "Length of refinement_levels must match length of block_ids.")
             str_ref_levels = ' '.join(map(str, refinement_levels))
         else:
             str_ref_levels = ' '.join(map(str, [refinement_levels] * len(block_ids)))
@@ -189,6 +170,14 @@ class ModelBuilder:
 
     # --- PRESERVED METHODS FROM ORIGINAL FILE ---
 
+    def add_global_params(self, params: Dict[str, Any]) -> 'ModelBuilder':
+        """Adds a [GlobalParams] block to the input file."""
+        gp_block = self._get_or_create_toplevel_moose_block("GlobalParams")
+        for p_name, p_val in params.items():
+            gp_block.add_param(p_name, p_val)
+        print("Info: Added [GlobalParams] block.")
+        return self
+
     def set_matrix_config(self, config: 'MatrixConfig') -> 'ModelBuilder':
         self.matrix_config = config
         return self
@@ -210,12 +199,10 @@ class ModelBuilder:
         vars_block = self._get_or_create_toplevel_moose_block("Variables")
         for var_config in variables:
             if isinstance(var_config, str):
-                var_block = MooseBlock(var_config)
-                vars_block.add_sub_block(var_block)
+                vars_block.add_sub_block(MooseBlock(var_config))
             elif isinstance(var_config, dict):
                 name = var_config.get("name")
-                if not name:
-                    raise ValueError("Variable configuration dictionary must have a 'name' key.")
+                if not name: raise ValueError("Variable config dict must have a 'name' key.")
                 var_block = MooseBlock(name)
                 if "params" in var_config:
                     for p_name, p_val in var_config["params"].items():
