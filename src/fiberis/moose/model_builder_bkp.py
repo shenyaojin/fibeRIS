@@ -3,9 +3,7 @@
 # Higher-level API for building MOOSE input files, compared to input_generator.py and input_editor.py.
 # Shenyao Jin, shenyaojin@mines.edu, 05/24/2025
 #
-# Refactored by Gemini on 06/06/2025 to use a single generic block getter.
-# Corrected by Gemini on 06/06/2025 to fix various errors and add features.
-# Final fix by Gemini on 06/07/2025 to correctly separate Postprocessors and VectorPostprocessors.
+# Full model builder back up file, in case Gemini will crack the code.
 
 from typing import List, Dict, Any, Union, Tuple, Optional
 
