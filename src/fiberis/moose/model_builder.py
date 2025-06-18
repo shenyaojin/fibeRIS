@@ -739,11 +739,132 @@ class ModelBuilder:
     def build_example_with_all_features(output_filepath: str = "example_full_build.i"):
         """
         UPDATED STATIC METHOD: Demonstrates building a complete input file
-        using the new, robust, stitched-mesh architecture.
+        using the new, robust, stitched-mesh architecture. This method showcases
+        the intended workflow for setting up a complex poromechanics simulation.
         """
-        # Note: This requires all dependent classes to be imported within the method's scope
-        # because it's a static method.
-        pass
+        # Because this is a static method, all necessary imports must be done
+        # inside the method's scope.
+        import numpy as np
+        from fiberis.moose.config import MatrixConfig, SRVConfig, HydraulicFractureConfig, ZoneMaterialProperties, \
+            PointValueSamplerConfig, LineValueSamplerConfig, SimpleFluidPropertiesConfig
+        from fiberis.analyzer.Data1D import core1D
+
+        # 1. Initialize the ModelBuilder
+        builder = ModelBuilder(project_name="StitchedMeshFracExample")
+
+        # 2. Define Material and Fluid Properties
+        # Define material properties for different zones.
+        matrix_mats = ZoneMaterialProperties(porosity=0.05, permeability="'1e-15 0 0 0 1e-15 0 0 0 1e-16'",
+                                             youngs_modulus=3e10, poissons_ratio=0.25)
+        srv_mats = ZoneMaterialProperties(porosity=0.1, permeability="'1e-13 0 0 0 1e-13 0 0 0 1e-14'")
+        frac_mats = ZoneMaterialProperties(porosity=0.5, permeability="'1e-10 0 0 0 1e-10 0 0 0 1e-11'")
+        # Define fluid properties.
+        water_props = SimpleFluidPropertiesConfig(name="water", bulk_modulus=2.2E9, viscosity=1.0E-3, density0=1000.0)
+
+        # 3. Add Configurations to the Builder
+        # Set the main reservoir matrix configuration.
+        builder.set_matrix_config(MatrixConfig(name="matrix", materials=matrix_mats))
+        # Add configuration for the Stimulated Reservoir Volume (SRV).
+        builder.add_srv_config(
+            SRVConfig(name="SRV1", length=300, height=80, center_x=500, center_y=250, materials=srv_mats))
+        # Add configuration for the hydraulic fracture.
+        builder.add_fracture_config(
+            HydraulicFractureConfig(name="Frac1", length=200, height=0.2, center_x=500, center_y=250,
+                                    materials=frac_mats))
+        # Add fluid properties configuration.
+        builder.add_fluid_properties_config(water_props)
+
+        # 4. Define Primary Variables
+        builder.add_variables([
+            {"name": "pp", "params": {"initial_condition": 26.4E6}},  # Porepressure
+            "disp_x",  # Displacement in x
+            "disp_y"  # Displacement in y
+        ])
+
+        # 5. Construct the Mesh using the new Stitched-Mesh approach
+        print("\n--- Building Mesh ---")
+        domain_length = 1000.0
+        domain_bounds = (0, 500)
+        # Define the y-coordinates of all horizontal features that require mesh seams.
+        fracture_y_coords = [builder.fracture_configs[0].center_y]
+
+        # Build the base mesh with layers stitched at fracture locations.
+        builder.build_stitched_mesh_for_fractures(
+            fracture_y_coords=fracture_y_coords,
+            domain_bounds=domain_bounds,
+            domain_length=domain_length,
+            nx=50,
+            ny_per_layer_half=15,  # Elements in each half-layer (above/below a seam)
+            bias_y=1.2  # Bias meshing towards the seam
+        )
+
+        # Define the SRV and Fracture subdomains by assigning block IDs.
+        builder.add_srv_zone_2d(config=builder.srv_configs[0], target_block_id=1)
+        builder.add_hydraulic_fracture_2d(config=builder.fracture_configs[0], target_block_id=2)
+
+        # Apply mesh refinement to the newly defined blocks.
+        builder.refine_blocks(op_name="refine_features", block_ids=[1, 2], refinement_levels=[1, 2])
+
+        # Define named boundaries (sidesets) for applying Boundary Conditions.
+        builder.add_named_boundary("left", (0, 0, 0), (0, domain_bounds[1], 0))
+        builder.add_named_boundary("right", (domain_length, 0, 0), (domain_length, domain_bounds[1], 0))
+        builder.add_named_boundary("bottom", (0, 0, 0), (domain_length, 0, 0))
+        builder.add_named_boundary("top", (0, domain_bounds[1], 0), (domain_length, domain_bounds[1], 0))
+
+        # Define the injection well as a nodeset at a specific coordinate.
+        builder.add_nodeset_by_coord("injection_well_nodes", "injection_well", (500, 250, 0))
+        print("--- Mesh Construction Complete ---")
+
+        # 6. Define Kernels (the physics)
+        builder.add_time_derivative_kernel(variable="pp")
+        builder.add_porous_flow_darcy_base_kernel(kernel_name="flux", variable="pp")
+        builder.add_stress_divergence_tensor_kernel(kernel_name="grad_stress_x", variable="disp_x", component=0)
+        builder.add_stress_divergence_tensor_kernel(kernel_name="grad_stress_y", variable="disp_y", component=1)
+        builder.add_porous_flow_effective_stress_coupling_kernel(kernel_name="eff_stress_x", variable="disp_x",
+                                                                 component=0, biot_coefficient=0.7)
+        builder.add_porous_flow_effective_stress_coupling_kernel(kernel_name="eff_stress_y", variable="disp_y",
+                                                                 component=1, biot_coefficient=0.7)
+        builder.add_porous_flow_mass_volumetric_expansion_kernel(kernel_name="mass_exp", variable="pp")
+
+        # 7. Define Materials block based on previously set configs
+        builder.add_poromechanics_materials(fluid_properties_name="water", biot_coefficient=0.7,
+                                            solid_bulk_compliance=1e-11)
+
+        # 8. Define Functions (e.g., for time-dependent BCs)
+        # Create a synthetic Data1D object for the injection pressure schedule.
+        pressure_data1d = core1D.Data1D(taxis=np.array([0, 1800, 3600]), data=np.array([27e6, 45e6, 40e6]))
+        builder.add_piecewise_function_from_data1d(name="injection_pressure_func", source_data1d=pressure_data1d)
+
+        # 9. Define Boundary Conditions using the named boundaries
+        builder.set_hydraulic_fracturing_bcs(
+            injection_well_boundary_name="injection_well",
+            injection_pressure_function_name="injection_pressure_func",
+            confine_disp_x_boundaries="left right",  # Apply to multiple boundaries
+            confine_disp_y_boundaries="top bottom",
+        )
+
+        # 10. Define AuxVariables and AuxKernels for outputting tensor components
+        tensor_to_output_map = {"stress": "stress", "strain": "strain"}
+        builder.add_standard_tensor_aux_vars_and_kernels(tensor_to_output_map)
+
+        # 11. Define Postprocessors for data extraction
+        builder.add_postprocessor(PointValueSamplerConfig(name="pp_well", variable="pp", point=(500, 250, 0)))
+        builder.add_postprocessor(LineValueSamplerConfig(
+            name="pressure_x_profile",
+            variable="pp stress_yy",  # Can sample multiple variables
+            start_point=(0, 250, 0),
+            end_point=(1000, 250, 0),
+            num_points=101,
+            output_vector=True  # Ensure this is compatible with VectorPostprocessors
+        ))
+
+        # 12. Define Executioner, Preconditioning, and Outputs
+        builder.add_executioner_block(end_time=3600, dt=100)
+        builder.add_preconditioning_block(active_preconditioner='mumps')
+        builder.add_outputs_block(exodus=True, csv=True)
+
+        # 13. Generate the final input file
+        builder.generate_input_file(output_filepath)
 
 if __name__ == '__main__':
     # Preserved from original file
