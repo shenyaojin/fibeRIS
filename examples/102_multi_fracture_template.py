@@ -122,7 +122,7 @@ builder.add_postprocessor(
                            other_params={'sort_by': 'x'}))
 
 # --- 5. Solver and Output ---
-builder.add_executioner_block(type="Transient", solve_type="NEWTON",
+builder.add_executioner_block(type="Transient", solve_type="NEWTON", end_time=3600, dt=100,
                               time_stepper_type='ConstantDT')
 
 builder.add_preconditioning_block(active_preconditioner='mumps')
