@@ -1,7 +1,12 @@
 # fiberis/moose/configs.py
 # This file defines configuration classes for hydraulic fractures and stimulated reservoir volumes (SRVs).
 # Shenyao Jin, shenyaojin@mines.edu, 2025-05-26
-from typing import List, Dict, Any, Optional, Union, Tuple
+from dataclasses import dataclass, field
+from typing import List, Dict, Any, Union, Optional, Tuple
+import numpy as np
+
+# Import the Data1D base class to be used for subclassing
+from fiberis.analyzer.Data1D.core1D import Data1D
 
 # +++ Material Properties +++
 class ZoneMaterialProperties:
@@ -306,76 +311,39 @@ class SimpleFluidPropertiesConfig:
         self.cv: Optional[float] = cv
         self.porepressure_coefficient: Optional[float] = porepressure_coefficient
 
-if __name__ == '__main__':
-    # Example usage of the new AMA configuration classes:
+# Adaptive time-stepping configuration
+class TimeStepperFunctionConfig(Data1D):
+    """
+    Refactored configuration class for a timestep limiting function.
 
-    # 1. Define an indicator
-    error_indicator = IndicatorConfig(
-        name="error_on_pp",
-        type="GradientJumpIndicator",
-        params={"variable": "pp", "outputs": "none"} # Assuming 'pp' is a defined variable
-    )
+    This class now inherits from Data1D, treating the function's time points
+    as 'taxis' and the corresponding dt values as 'data'. This improves code
+    consistency and reusability.
+    """
+    def __init__(self,
+                 name: str,
+                 x_values: Union[List[float], np.ndarray],
+                 y_values: Union[List[float], np.ndarray]):
+        """
+        Initializes the TimeStepperFunctionConfig.
 
-    # 2. Define another indicator (optional)
-    another_indicator = IndicatorConfig(
-        name="solution_indicator",
-        type="ValueJumpIndicator", # Example type
-        params={"variable": "disp_x"}
-    )
-
-    # 3. Define a marker that uses the first indicator
-    error_fraction_marker = MarkerConfig(
-        name="errorfrac_pp_marker",
-        type="ErrorFractionMarker",
-        params={"indicator": "error_on_pp", "refine": 0.6, "coarsen": 0.1, "outputs": "none"}
-    )
-
-    # 4. Define another marker (optional)
-    threshold_marker = MarkerConfig(
-        name="disp_x_threshold",
-        type="ValueThresholdMarker", # Example type
-        params={"indicator": "solution_indicator", "min_value": 0.01, "max_value": 0.5, "refine": True}
-    )
+        Args:
+            name (str): The name of the function in the MOOSE input file (e.g., 'constant_step_1').
+            x_values (Union[List[float], np.ndarray]): A list of time points. This corresponds to the 'x' axis.
+            y_values (Union[List[float], np.ndarray]): A list of corresponding timestep (dt) values. This corresponds to the 'y' axis.
+        """
+        # Call the parent's __init__ method, mapping x/y to taxis/data
+        super().__init__(name=name, taxis=np.array(x_values), data=np.array(y_values))
 
 
-    # 5. Define the overall adaptivity configuration
-    # Option A: Initialize with empty lists and add later
-    ama_setup_option_a = AdaptivityConfig(
-        marker_to_use="errorfrac_pp_marker", # This name must match one of the MarkerConfig names
-        steps=3
-    )
-    ama_setup_option_a.add_indicator(error_indicator)
-    ama_setup_option_a.add_marker(error_fraction_marker)
-    # Optionally add more
-    ama_setup_option_a.add_indicator(another_indicator)
-    ama_setup_option_a.add_marker(threshold_marker)
+@dataclass
+class AdaptiveTimeStepperConfig:
+    """
+    A container class for configuring the IterationAdaptiveDT TimeStepper.
 
-
-    # Option B: Initialize directly with lists of configs
-    ama_setup_option_b = AdaptivityConfig(
-        marker_to_use="errorfrac_pp_marker",
-        steps=2,
-        indicators=[
-            IndicatorConfig(name="pressure_grad", type="GradientJumpIndicator", params={"variable": "pp"}),
-            IndicatorConfig(name="stress_error", type="SomeOtherErrorIndicator", params={"variable": "von_mises_stress"})
-        ],
-        markers=[
-            MarkerConfig(name="errorfrac_pp_marker", type="ErrorFractionMarker", params={"indicator": "pressure_grad", "refine": 0.5}),
-            MarkerConfig(name="stress_based_marker", type="ErrorFractionMarker", params={"indicator": "stress_error", "refine": 0.4})
-        ]
-    )
-
-
-    print("Adaptivity Configuration Example (Option A):")
-    print(f"  Main Adaptivity Settings: marker='{ama_setup_option_a.marker_to_use}', steps={ama_setup_option_a.steps}")
-    for ind in ama_setup_option_a.indicators:
-        print(f"    Indicator: name='{ind.name}', type='{ind.type}', params={ind.params}")
-    for marker in ama_setup_option_a.markers:
-        print(f"    Marker: name='{marker.name}', type='{marker.type}', params={marker.params}")
-
-    print("\nAdaptivity Configuration Example (Option B):")
-    print(f"  Main Adaptivity Settings: marker='{ama_setup_option_b.marker_to_use}', steps={ama_setup_option_b.steps}")
-    for ind in ama_setup_option_b.indicators:
-        print(f"    Indicator: name='{ind.name}', type='{ind.type}', params={ind.params}")
-    for marker in ama_setup_option_b.markers:
-        print(f"    Marker: name='{marker.name}', type='{marker.type}', params={marker.params}")
+    It holds a list of all the schedule functions that the time stepper will use
+    to limit the timestep throughout the simulation.
+    """
+    # This list will contain all the "schedule" functions,
+    # which are now instances of the new TimeStepperFunctionConfig class.
+    functions: List[TimeStepperFunctionConfig]
