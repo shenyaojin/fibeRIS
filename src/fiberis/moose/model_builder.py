@@ -296,6 +296,57 @@ class ModelBuilder:
         kernels_main_block.add_sub_block(kernel_obj)
         return self
 
+    def add_porous_flow_mass_volumetric_expansion_kernel(self,
+                                                         kernel_name: str,
+                                                         variable: str,
+                                                         fluid_component: int,
+                                                         displacements: Union[str, List[str]],
+                                                         base_name: str,
+                                                         block_names: Union[str, List[str]]) -> 'ModelBuilder':
+        """
+        Adds a PorousFlowMassVolumetricExpansion kernel to the Kernels block.
+
+        This kernel is essential for poromechanics simulations as it accounts for the
+        change in fluid mass resulting from the volumetric expansion or contraction
+        of the solid matrix. This term is dependent on the time-derivative of the
+        volumetric strain, which is calculated from the displacement variables.
+
+        Args:
+            kernel_name (str): The unique name for this kernel block in the MOOSE input file.
+            variable (str): The name of the PorousFlow variable this kernel operates on (e.g., 'pp').
+            fluid_component (int): The index of the fluid component this kernel applies to.
+            displacements (Union[str, List[str]]): The displacement variable(s) (e.g., ['disp_x', 'disp_y']).
+            base_name (str): The base name of the material property that computes volumetric strain,
+                             typically matching the name of the ComputeSmallStrain material (e.g., 'strain').
+            block_names (Union[str, List[str]]): A list or space-separated string of block names
+                                                 or IDs where this kernel should be active.
+
+        Returns:
+            ModelBuilder: The instance of the model builder for method chaining.
+        """
+        # Get the main [Kernels] block, creating it if it doesn't exist.
+        kernels_main_block = self._get_or_create_toplevel_moose_block("Kernels")
+
+        # Create the specific MooseBlock for this kernel.
+        kernel_obj = MooseBlock(kernel_name, block_type="PorousFlowMassVolumetricExpansion")
+
+        # Add all the required parameters to the kernel block.
+        kernel_obj.add_param("variable", variable)
+        kernel_obj.add_param("fluid_component", fluid_component)
+        kernel_obj.add_param("base_name", base_name)
+
+        # Format list-based parameters into space-separated strings as expected by MOOSE.
+        kernel_obj.add_param("block", ' '.join(block_names) if isinstance(block_names, list) else block_names)
+        displacements_str = ' '.join(displacements) if isinstance(displacements, list) else displacements
+        kernel_obj.add_param("displacements", f"'{displacements_str}'")
+
+        # Add the fully configured kernel to the main [Kernels] block.
+        kernels_main_block.add_sub_block(kernel_obj)
+        print(f"Info: Added PorousFlowMassVolumetricExpansion Kernel '{kernel_name}'.")
+
+        # Return the builder instance to allow for chaining commands.
+        return self
+
     def set_adaptivity_options(self,
                                enable: bool = True,
                                config: Optional[AdaptivityConfig] = None,

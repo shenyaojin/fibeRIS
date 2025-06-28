@@ -18,20 +18,7 @@ pip install -e .
 
 ## 1. Data Input/Output (`fiberis.io`)
 
-The `fiberis.io` package handles reading and writing data. `fibeRIS` primarily utilizes the `.npz` file format with specific variable naming conventions for optimized I/O operations. Datasets are typically structured with reference axes (e.g., `taxis` for time, `daxis` for depth/distance) and the primary data array (named `data`).
-
-- **Packing Standard**: For detailed guidelines on preparing your data for use with `fibeRIS`, please refer to the [Packing Standard documentation](docs/packing_starndard.md). 
-- **Core I/O Class**: `fiberis.io.core.DataIO` serves as an abstract base class for all data readers and writers. 
-- **Supported Data Readers**:
-  - `reader_mariner_gauge1d`: For Mariner 1D gauge data. 
-  - `reader_mariner_pp1d`: For Mariner 1D pumping data. 
-  - `reader_mariner_das2d`: For Mariner 2D DAS (Distributed Acoustic Sensing) data. 
-  - `reader_mariner_3d`: For Mariner 3D well geometry data. 
-  - `reader_hfts2_h5`: For HFTS2 (Hydraulic Fracturing Test Site 2) data from HDF5 files. 
-  - `reader_MOOSEcsv_pp1d`: For 1D post-processed data from MOOSE-generated CSV files. 
-  - `reader_mariner_rfs`: For Mariner 2D RFS (Rayleigh Frequency Shift) data (implementation TBD). 
-- **I/O Examples**:
-  - See `examples/102r_IOstandard_example.ipynb`  and `examples/102rp_IOstandard_example.py` .
+The `fiberis.io` package handles reading and writing standard data that can be handled by `fiberis.analyzer`.
 
 ## 2. Data Analysis (`fiberis.analyzer`)
 
