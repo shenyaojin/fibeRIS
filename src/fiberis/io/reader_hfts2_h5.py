@@ -9,7 +9,7 @@ from dateutil import parser
 from fiberis.io import core
 
 
-# Need to self check function in core.py
+# Need to self check function in coreV.py
 
 class HFTS2DAS2D(core.DataIO):
 
