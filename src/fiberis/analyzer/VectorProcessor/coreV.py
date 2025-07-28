@@ -183,3 +183,12 @@ class CoreVector:
         self.name = name
         self.history.add_record(f"Set name to: {name}")
         return self # Allow method chaining
+
+    def load_npz(self, filepath: str) -> 'CoreVector':
+        """
+        Load data from a .npz file.
+
+        :param filepath: Path to the .npz file.
+        """
+
+        return
