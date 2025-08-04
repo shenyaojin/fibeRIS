@@ -10,7 +10,7 @@ from typing import Optional, Union, List, Any, Dict
 
 # Fiberis imports
 from fiberis.utils.history_utils import InfoManagementSystem
-
+from moose_env.moose.modules.solid_mechanics.test.tests.capped_mohr_coulomb.small_deform_hard_3_13 import expect3
 
 
 class CoreVector:
@@ -184,11 +184,32 @@ class CoreVector:
         self.history.add_record(f"Set name to: {name}")
         return self # Allow method chaining
 
-    def load_npz(self, filepath: str) -> 'CoreVector':
+    def load_npz(self, filename: str) -> 'CoreVector':
         """
         Load data from a .npz file.
+        Expected keys: 'data', 'taxis', 'dim', 'start_time', 'name'.
 
         :param filepath: Path to the .npz file.
         """
 
-        return
+        if not filename.endswith('.npz'):
+            filename_ext = filename + ".npz"
+        else:
+            filename_ext = filename
+
+        self.history.add_record(f"Loading data from {filename_ext}")
+
+        try:
+            data_structure = np.load(filename_ext, allow_pickle='True')
+        except FileNotFoundError:
+            self.history.add_record(f"Error: File {filename_ext} not found.", level='error')
+            raise
+
+        try:
+            loaded_data = data_structure['data']
+            loaded_taxis = data_structure['taxis']
+            loaded_dim = data_structure['dim'].item()  # Use .item() to get the scalar value
+            start_time_raw = data_structure['start_time']
+        except KeyError as e:
+            self.history.add_record(f"Error: Missing key in .npz file: {e}", level='error')
+            raise KeyError(f"Missing key in .npz file: {e}")
