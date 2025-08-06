@@ -578,6 +578,86 @@ class ModelBuilder:
         print(f"Info: Added SimpleFluidProperties '{config.name}'.")
         return self
 
+    # --- Materials Block Generation --- (old)
+    # def add_poromechanics_materials(self,
+    #                                 fluid_properties_name: str,
+    #                                 biot_coefficient: float,
+    #                                 solid_bulk_compliance: float,
+    #                                 displacements: List[str] = ['disp_x', 'disp_y'],
+    #                                 porepressure_variable: str = 'pp') -> 'ModelBuilder':
+    #     """Builds the entire [Materials] block based on stored configs."""
+    #     fluid_config = next((c for c in self.fluid_properties_configs if c.name == fluid_properties_name), None)
+    #     if not fluid_config:
+    #         raise ValueError(f"FluidPropertiesConfig '{fluid_properties_name}' not found.")
+    #
+    #     self.add_simple_fluid_properties(config=fluid_config)
+    #
+    #     mat_block = self._get_or_create_toplevel_moose_block("Materials")
+    #     all_configs = ([self.matrix_config] if self.matrix_config else []) + self.srv_configs + self.fracture_configs
+    #     all_block_names = [c.name for c in all_configs if c]
+    #
+    #     for conf in all_configs:
+    #         if not conf: continue
+    #         poro_mat = MooseBlock(f"porosity_{conf.name}", "PorousFlowPorosityConst")
+    #         poro_mat.add_param("porosity", conf.materials.porosity)
+    #         poro_mat.add_param("block", conf.name)
+    #         mat_block.add_sub_block(poro_mat)
+    #
+    #         perm_mat = MooseBlock(f"permeability_{conf.name}", "PorousFlowPermeabilityConst")
+    #         perm_mat.add_param("permeability", conf.materials.permeability)
+    #         perm_mat.add_param("block", conf.name)
+    #         mat_block.add_sub_block(perm_mat)
+    #
+    #     mat_block.add_sub_block(MooseBlock("temperature", "PorousFlowTemperature"))
+    #
+    #     biot_mod_params = {
+    #         "biot_coefficient": biot_coefficient,
+    #         "solid_bulk_compliance": solid_bulk_compliance,
+    #         "fluid_bulk_modulus": fluid_config.bulk_modulus,
+    #         "block": ' '.join(all_block_names)
+    #     }
+    #     biot_mod_mat = MooseBlock("biot_modulus", "PorousFlowConstantBiotModulus")
+    #     for p_name, p_val in biot_mod_params.items():
+    #         biot_mod_mat.add_param(p_name, p_val)
+    #     mat_block.add_sub_block(biot_mod_mat)
+    #
+    #     mat_block.add_sub_block(MooseBlock("massfrac", "PorousFlowMassFraction"))
+    #
+    #     fluid_mat = MooseBlock("simple_fluid", "PorousFlowSingleComponentFluid")
+    #     fluid_mat.add_param("fp", fluid_config.name)
+    #     fluid_mat.add_param("phase", 0)
+    #     mat_block.add_sub_block(fluid_mat)
+    #
+    #     ps_mat = MooseBlock("PS", "PorousFlow1PhaseFullySaturated")
+    #     ps_mat.add_param("porepressure", porepressure_variable)
+    #     mat_block.add_sub_block(ps_mat)
+    #
+    #     relp_mat = MooseBlock("relp", "PorousFlowRelativePermeabilityConst")
+    #     relp_mat.add_param("phase", 0)
+    #     mat_block.add_sub_block(relp_mat)
+    #
+    #     mat_block.add_sub_block(MooseBlock("eff_fluid_pressure_qp", "PorousFlowEffectiveFluidPressure"))
+    #
+    #     elasticity_mat = MooseBlock("elasticity_tensor_matrix", "ComputeIsotropicElasticityTensor")
+    #     youngs_modulus = self.matrix_config.materials.youngs_modulus if self.matrix_config and self.matrix_config.materials.youngs_modulus is not None else 5.0E10
+    #     poissons_ratio = self.matrix_config.materials.poissons_ratio if self.matrix_config and self.matrix_config.materials.poissons_ratio is not None else 0.2
+    #     elasticity_mat.add_param("youngs_modulus", youngs_modulus)
+    #     elasticity_mat.add_param("poissons_ratio", poissons_ratio)
+    #     mat_block.add_sub_block(elasticity_mat)
+    #
+    #     strain_mat = MooseBlock("strain", "ComputeSmallStrain")
+    #     strain_mat.add_param("displacements", ' '.join(displacements))
+    #     mat_block.add_sub_block(strain_mat)
+    #
+    #     stress_mat = MooseBlock("stress", "ComputeLinearElasticStress")
+    #     mat_block.add_sub_block(stress_mat)
+    #
+    #     vol_strain_mat = MooseBlock("vol_strain", "PorousFlowVolumetricStrain")
+    #     mat_block.add_sub_block(vol_strain_mat)
+    #
+    #     print("Info: Added poromechanics materials based on stored configurations.")
+    #     return self
+
     # --- Materials Block Generation ---
     def add_poromechanics_materials(self,
                                     fluid_properties_name: str,
@@ -598,16 +678,42 @@ class ModelBuilder:
 
         for conf in all_configs:
             if not conf: continue
+            # --- Porosity Block (Unchanged) ---
             poro_mat = MooseBlock(f"porosity_{conf.name}", "PorousFlowPorosityConst")
             poro_mat.add_param("porosity", conf.materials.porosity)
             poro_mat.add_param("block", conf.name)
             mat_block.add_sub_block(poro_mat)
 
-            perm_mat = MooseBlock(f"permeability_{conf.name}", "PorousFlowPermeabilityConst")
-            perm_mat.add_param("permeability", conf.materials.permeability)
-            perm_mat.add_param("block", conf.name)
-            mat_block.add_sub_block(perm_mat)
+            # --- NEW Permeability Logic ---
+            perm_value = conf.materials.permeability
+            if isinstance(perm_value, str) and perm_value.endswith('.npz'):
+                # Case 1: Time-dependent permeability from an .npz file
+                perm_func_name = f"perm_func_{conf.name}"
 
+                # Load the .npz file into a Data1D-like object
+                perm_data = core1D.Data1D()
+                perm_data.load_npz(perm_value)
+
+                # Add the [Functions] block for this data
+                self.add_piecewise_function_from_data1d(name=perm_func_name, source_data1d=perm_data)
+
+                # Create a material that uses this function
+                perm_mat = MooseBlock(f"permeability_{conf.name}", "GenericFunctionMaterial")
+                perm_mat.add_param("prop_names", "permeability")
+                perm_mat.add_param("prop_values", perm_func_name)
+                perm_mat.add_param("block", conf.name)
+                mat_block.add_sub_block(perm_mat)
+                print(
+                    f"Info: Configured time-dependent permeability for '{conf.name}' using function '{perm_func_name}'.")
+
+            else:
+                # Case 2: Constant permeability (scalar float or tensor string)
+                perm_mat = MooseBlock(f"permeability_{conf.name}", "PorousFlowPermeabilityConst")
+                perm_mat.add_param("permeability", perm_value)  # Handles both float and string
+                perm_mat.add_param("block", conf.name)
+                mat_block.add_sub_block(perm_mat)
+
+        # --- Remainder of the function (Unchanged) ---
         mat_block.add_sub_block(MooseBlock("temperature", "PorousFlowTemperature"))
 
         biot_mod_params = {

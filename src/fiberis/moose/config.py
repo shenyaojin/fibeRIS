@@ -16,7 +16,7 @@ class ZoneMaterialProperties:
     """
     def __init__(self,
                  porosity: float,
-                 permeability: str, # MOOSE expects a string for the tensor, e.g., '1e-15 0 0 ...'
+                 permeability: Union[float, str], # Can be a scalar, tensor string, or filepath string
                  youngs_modulus: Optional[float] = None, # For solid mechanics
                  poissons_ratio: Optional[float] = None): # For solid mechanics
         """
@@ -24,15 +24,17 @@ class ZoneMaterialProperties:
 
         Args:
             porosity (float): The porosity of the material in this zone.
-            permeability (str): The permeability tensor as a space-separated string.
+            permeability (Union[float, str]): The permeability. Can be:
+                - A float for constant, isotropic permeability.
+                - A string for a constant, anisotropic tensor (e.g., '1e-15 0 0 ...').
+                - A string representing a filepath to an .npz file for time-dependent permeability.
             youngs_modulus (Optional[float], optional): Young's modulus for elasticity. Defaults to None.
             poissons_ratio (Optional[float], optional): Poisson's ratio for elasticity. Defaults to None.
         """
         self.porosity: float = porosity
-        self.permeability: str = permeability
+        self.permeability: Union[float, str] = permeability
         self.youngs_modulus: Optional[float] = youngs_modulus
         self.poissons_ratio: Optional[float] = poissons_ratio
-
 
 # +++ Matrix Configuration +++
 class MatrixConfig:
