@@ -1,6 +1,6 @@
-# Core class for vector processor
+# Core class for Tensor processor
 # Shenyao Jin, 07/18/2025
-# fiberis.analyzer.VectorProcessor.coreV
+# fiberis.analyzer.TensorProcessor.coreV
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -13,9 +13,9 @@ from fiberis.utils.history_utils import InfoManagementSystem
 from moose_env.moose.modules.solid_mechanics.test.tests.capped_mohr_coulomb.small_deform_hard_3_13 import expect3
 
 
-class CoreVector:
+class CoreTensor:
     """
-    Class for vector processor in fiberis.analyzer.
+    Class for Tensor processor in fiberis.analyzer.
 
     Usage: MOOSE module.
 
@@ -29,27 +29,27 @@ class CoreVector:
                  start_time: Optional[datetime.datetime] = None,
                  name: Optional[str] = None):
         """
-        Intialize the CoreVector class.
+        Intialize the CoreTensor class.
 
         :param data: the tensor data to be processed.
         :param taxis: the time axis of the tensor data. Must start from 0.
         :param dim: the dimension of the tensor data. The dim=3 then the data will have shape of [3, 3, len(taixs)].
         :param start_time: The start time stamp of the data. Must be a datetime object.
-        :param name: name of the vector data. If not provided, it will be set to "Vector Data".
+        :param name: name of the Tensor data. If not provided, it will be set to "Tensor Data".
         """
 
         self.data: Optional[np.ndarray] = data
         self.taxis: Optional[np.ndarray] = taxis
         self.dim: Optional[int] = dim
         self.start_time: Optional[datetime.datetime] = start_time
-        self.name: Optional[str] = "Default Vector Data" if name is None else name
+        self.name: Optional[str] = "Default Tensor Data" if name is None else name
 
         self.history: InfoManagementSystem = InfoManagementSystem()
 
         if name is None:
-            self.history.add_record(f"Init CoreVector with default name: {self.name}")
+            self.history.add_record(f"Init CoreTensor with default name: {self.name}")
         else:
-            self.history.add_record(f"Init CoreVector with name: {self.name}")
+            self.history.add_record(f"Init CoreTensor with name: {self.name}")
 
 
     # I/O methods
@@ -171,7 +171,7 @@ class CoreVector:
 
     def set_name(self, name: str):
         """
-        Set the name for the CoreVector instance.
+        Set the name for the CoreTensor instance.
 
         :param name: The name of the data. Must be a string.
         """
@@ -184,7 +184,7 @@ class CoreVector:
         self.history.add_record(f"Set name to: {name}")
         return self # Allow method chaining
 
-    def load_npz(self, filename: str) -> 'CoreVector':
+    def load_npz(self, filename: str) -> 'CoreTensor':
         """
         Load data from a .npz file.
         Expected keys: 'data', 'taxis', 'dim', 'start_time', 'name'.
@@ -213,3 +213,6 @@ class CoreVector:
         except KeyError as e:
             self.history.add_record(f"Error: Missing key in .npz file: {e}", level='error')
             raise KeyError(f"Missing key in .npz file: {e}")
+
+    # For other functions, to be implemented in the future. I decided to bypass the implementation of these functions
+    # and turn to Data1D to partially implement the tensor part.
