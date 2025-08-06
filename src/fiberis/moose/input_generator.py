@@ -1,4 +1,4 @@
-# Input file generator for MOOSE (Multiphysics Object Oriented Simulation Environment) by INL
+# Input file generator for MOOSE by INL
 # Base level class for MOOSE blocks and a generic input file generator. Directly creates MOOSE input files
 # Lower level class, compared to model_builder.py, which is more specific to the MOOSE model structure.
 # Shenyao Jin, 05/17/2025, shenyaojin@mines.edu

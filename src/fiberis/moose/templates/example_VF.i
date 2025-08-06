@@ -1,4 +1,6 @@
-# The input file for the MOOSE framework. From Victor Fakeye, RCP PhD candidate.
+# The input file for the MOOSE framework. From Victor Fakeye, RCP PhD candidate
+# EGS project, Fervo Energy.
+
 [Mesh]
   [gen1]
     type = GeneratedMeshGenerator
