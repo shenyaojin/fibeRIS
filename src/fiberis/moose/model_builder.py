@@ -298,57 +298,6 @@ class ModelBuilder:
         kernels_main_block.add_sub_block(kernel_obj)
         return self
 
-    def add_porous_flow_mass_volumetric_expansion_kernel(self,
-                                                         kernel_name: str,
-                                                         variable: str,
-                                                         fluid_component: int,
-                                                         displacements: Union[str, List[str]],
-                                                         base_name: str,
-                                                         block_names: Union[str, List[str]]) -> 'ModelBuilder':
-        """
-        Adds a PorousFlowMassVolumetricExpansion kernel to the Kernels block.
-
-        This kernel is essential for poromechanics simulations as it accounts for the
-        change in fluid mass resulting from the volumetric expansion or contraction
-        of the solid matrix. This term is dependent on the time-derivative of the
-        volumetric strain, which is calculated from the displacement variables.
-
-        Args:
-            kernel_name (str): The unique name for this kernel block in the MOOSE input file.
-            variable (str): The name of the PorousFlow variable this kernel operates on (e.g., 'pp').
-            fluid_component (int): The index of the fluid component this kernel applies to.
-            displacements (Union[str, List[str]]): The displacement variable(s) (e.g., ['disp_x', 'disp_y']).
-            base_name (str): The base name of the material property that computes volumetric strain,
-                             typically matching the name of the ComputeSmallStrain material (e.g., 'strain').
-            block_names (Union[str, List[str]]): A list or space-separated string of block names
-                                                 or IDs where this kernel should be active.
-
-        Returns:
-            ModelBuilder: The instance of the model builder for method chaining.
-        """
-        # Get the main [Kernels] block, creating it if it doesn't exist.
-        kernels_main_block = self._get_or_create_toplevel_moose_block("Kernels")
-
-        # Create the specific MooseBlock for this kernel.
-        kernel_obj = MooseBlock(kernel_name, block_type="PorousFlowMassVolumetricExpansion")
-
-        # Add all the required parameters to the kernel block.
-        kernel_obj.add_param("variable", variable)
-        kernel_obj.add_param("fluid_component", fluid_component)
-        kernel_obj.add_param("base_name", base_name)
-
-        # Format list-based parameters into space-separated strings as expected by MOOSE.
-        kernel_obj.add_param("block", ' '.join(block_names) if isinstance(block_names, list) else block_names)
-        displacements_str = ' '.join(displacements) if isinstance(displacements, list) else displacements
-        kernel_obj.add_param("displacements", f"'{displacements_str}'")
-
-        # Add the fully configured kernel to the main [Kernels] block.
-        kernels_main_block.add_sub_block(kernel_obj)
-        print(f"Info: Added PorousFlowMassVolumetricExpansion Kernel '{kernel_name}'.")
-
-        # Return the builder instance to allow for chaining commands.
-        return self
-
     # --- Adaptivity Block ---
     # Use AMA to set adaptivity options.
 
@@ -578,7 +527,7 @@ class ModelBuilder:
         print(f"Info: Added SimpleFluidProperties '{config.name}'.")
         return self
 
-    # --- Materials Block Generation --- (old)
+    # --- Materials Block Generation --- (old version)
     # def add_poromechanics_materials(self,
     #                                 fluid_properties_name: str,
     #                                 biot_coefficient: float,
@@ -689,6 +638,7 @@ class ModelBuilder:
             if isinstance(perm_value, str) and perm_value.endswith('.npz'):
                 # Case 1: Time-dependent permeability from an .npz file
                 perm_func_name = f"perm_func_{conf.name}"
+                scalar_perm_var_name = f"scalar_perm_{conf.name}"
 
                 # Load the .npz file into a Data1D-like object
                 perm_data = core1D.Data1D()
@@ -697,10 +647,25 @@ class ModelBuilder:
                 # Add the [Functions] block for this data
                 self.add_piecewise_function_from_data1d(name=perm_func_name, source_data1d=perm_data)
 
-                # Create a material that uses this function
-                perm_mat = MooseBlock(f"permeability_{conf.name}", "GenericFunctionMaterial")
-                perm_mat.add_param("prop_names", "permeability")
-                perm_mat.add_param("prop_values", perm_func_name)
+                # --- Create an AuxVariable and AuxKernel to make the function value available as a field variable ---
+                # 1. Add AuxVariable
+                aux_vars_block = self._get_or_create_toplevel_moose_block("AuxVariables")
+                aux_var = MooseBlock(scalar_perm_var_name)
+                aux_var.add_param("order", "CONSTANT")
+                aux_var.add_param("family", "MONOMIAL")
+                aux_vars_block.add_sub_block(aux_var)
+
+                # 2. Add AuxKernel to couple the function to the aux variable
+                aux_kernels_block = self._get_or_create_toplevel_moose_block("AuxKernels")
+                aux_kernel = MooseBlock(scalar_perm_var_name, block_type="FunctionAux")
+                aux_kernel.add_param("variable", scalar_perm_var_name)
+                aux_kernel.add_param("function", perm_func_name)
+                aux_kernel.add_param("block", conf.name)
+                aux_kernels_block.add_sub_block(aux_kernel)
+
+                # Create the final permeability tensor, coupling it to the new AuxVariable
+                perm_mat = MooseBlock(f"permeability_{conf.name}", "PorousFlowPermeabilityTensorFromVar")
+                perm_mat.add_param("perm", scalar_perm_var_name)
                 perm_mat.add_param("block", conf.name)
                 mat_block.add_sub_block(perm_mat)
                 print(

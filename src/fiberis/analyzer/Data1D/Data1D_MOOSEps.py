@@ -1,5 +1,6 @@
 # src/fiberis/analyzer/Data1D/Data1D_MOOSEps.py
 # Specialized Data1D class for reading MOOSE point sampler output files.
+# MOOSE (Point Sampler) handler.
 # Shenyao Jin, shenyaojin@mines.edu, 06/23/2025
 
 import os
