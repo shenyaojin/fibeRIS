@@ -60,57 +60,40 @@ class Data1D:
         Raises:
             FileNotFoundError: If the specified file does not exist.
             KeyError: If the .npz file is missing one of the required keys.
-            ValueError: If start_time in the file has an unexpected format.
         """
-        if not filename.endswith('.npz'):
-            filename += '.npz'
-
-        try:
-            data_structure = np.load(filename, allow_pickle=True)
-        except FileNotFoundError:
+        self.history.add_record(f"Attempting to load data from NPZ file: {filename}", level="INFO")
+        if not os.path.exists(filename):
             self.history.add_record(f"Error: File not found at {filename}", level="ERROR")
-            raise
+            raise FileNotFoundError(f"The specified NPZ file does not exist: {filename}")
 
         try:
-            self.data = data_structure['data']
-            self.taxis = data_structure['taxis']
-            start_time_raw = data_structure['start_time']
-        except KeyError as e:
-            self.history.add_record(f"Error: Missing key {e} in NPZ file {filename}", level="ERROR")
-            raise KeyError(f"NPZ file {filename} is missing key: {e}. Expected 'data', 'taxis', 'start_time'.") from e
+            with np.load(filename, allow_pickle=True) as data_structure:
+                if 'data' not in data_structure:
+                    raise KeyError("'data' key is missing from the NPZ file.")
+                if 'taxis' not in data_structure:
+                    raise KeyError("'taxis' key is missing from the NPZ file.")
+                if 'start_time' not in data_structure:
+                    raise KeyError("'start_time' key is missing from the NPZ file.")
 
-        # Handle start_time correctly
-        if isinstance(start_time_raw, np.ndarray) and start_time_raw.size == 1:
-            start_time_raw = start_time_raw.item()  # Extract scalar from array
+                self.data = data_structure['data']
+                self.taxis = data_structure['taxis']
+                start_time_raw = data_structure['start_time'].item() # .item() extracts the scalar value
 
-        if isinstance(start_time_raw, np.datetime64):
-            # Convert numpy.datetime64 to python datetime.datetime
-            # Ensure milliseconds precision if that's the source format
-            self.start_time = start_time_raw.astype('datetime64[ms]').astype(datetime.datetime)
-        elif isinstance(start_time_raw, str):
-            try:
-                self.start_time = datetime.datetime.fromisoformat(start_time_raw)
-            except ValueError:
-                # Attempt to parse if it's a slightly different common format
-                try:
-                    self.start_time = datetime.datetime.strptime(start_time_raw, '%Y-%m-%d %H:%M:%S.%f')
-                except ValueError:
-                    try:
-                        self.start_time = datetime.datetime.strptime(start_time_raw, '%Y-%m-%d %H:%M:%S')
-                    except ValueError as ve_parse:
-                        self.history.add_record(
-                            f"Error: Could not parse start_time string '{start_time_raw}' from {filename}",
-                            level="ERROR")
-                        raise ValueError(f"Could not parse start_time string: {start_time_raw}") from ve_parse
-        elif isinstance(start_time_raw, datetime.datetime):
-            self.start_time = start_time_raw
-        else:
-            self.history.add_record(f"Error: Unexpected type for start_time ({type(start_time_raw)}) in {filename}",
-                                    level="ERROR")
-            raise ValueError(f"Unsupported start_time type: {type(start_time_raw)}")
+                if isinstance(start_time_raw, str):
+                    self.start_time = datetime.datetime.fromisoformat(start_time_raw)
+                elif isinstance(start_time_raw, datetime.datetime):
+                    self.start_time = start_time_raw
+                else:
+                    raise ValueError(f"Unsupported start_time type in NPZ file: {type(start_time_raw)}")
 
-        self.name = os.path.basename(filename)  # Store base filename as name
-        self.history.add_record(f"Successfully loaded data from {filename}. Name set to '{self.name}'.")
+            self.name = os.path.basename(filename)
+            self.history.add_record(f"Successfully loaded data from {filename}. Name set to '{self.name}'.", level="INFO")
+            self.history.add_record(f"Loaded {len(self.data)} data points.", level="INFO")
+
+        except Exception as e:
+            self.history.add_record(f"An unexpected error occurred while loading {filename}: {e}", level="ERROR")
+            # Re-raise the exception to ensure the calling code knows about the failure.
+            raise
 
     def crop(self, start: Union[datetime.datetime, float, int], end: Union[datetime.datetime, float, int]) -> None:
         """

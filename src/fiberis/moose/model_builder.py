@@ -11,9 +11,10 @@ import numpy as np
 # Import config classes and lower-level MooseBlock class from the user's original file.
 from fiberis.moose.config import HydraulicFractureConfig, SRVConfig, AdaptivityConfig, \
     PointValueSamplerConfig, LineValueSamplerConfig, PostprocessorConfigBase, \
-    SimpleFluidPropertiesConfig, MatrixConfig, AdaptiveTimeStepperConfig
+    SimpleFluidPropertiesConfig, MatrixConfig, AdaptiveTimeStepperConfig, PostprocessorConfig
 from fiberis.moose.input_generator import MooseBlock
 from fiberis.analyzer.Data1D import core1D
+
 
 
 class ModelBuilder:
@@ -457,6 +458,8 @@ class ModelBuilder:
             main_block = self._get_or_create_toplevel_moose_block("VectorPostprocessors")
         elif isinstance(config, PointValueSamplerConfig):
             main_block = self._get_or_create_toplevel_moose_block("Postprocessors")
+        elif isinstance(config, PostprocessorConfig):
+             main_block = self._get_or_create_toplevel_moose_block("Postprocessors")
         else:
             # Default to Postprocessors for any other type, with a warning.
             main_block = self._get_or_create_toplevel_moose_block("Postprocessors")
@@ -768,7 +771,8 @@ class ModelBuilder:
     # --- Executioner, Preconditioning, and Outputs ---
 
     # Update the add_executioner_block method to handle adaptive stepper configuration
-    def add_executioner_block(self,
+    def add_executioner_block(
+                              self,
                               end_time: float,
                               dt: float,
                               # The time_stepper_type is now an optional argument.

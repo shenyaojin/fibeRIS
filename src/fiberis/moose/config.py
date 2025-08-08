@@ -286,6 +286,37 @@ class LineValueSamplerConfig(PostprocessorConfigBase):
         self.end_point_str: str = current_other_params["end_point"]
         self.num_sample_points: int = num_points
 
+
+class PostprocessorConfig(PostprocessorConfigBase):
+    """
+    A generic configuration class for any MOOSE Postprocessor.
+    This provides flexibility for postprocessors not covered by specific configs.
+    """
+    def __init__(self,
+                 name: str,
+                 pp_type: str,
+                 params: Optional[Dict[str, Any]] = None):
+        """
+        Initializes a generic PostprocessorConfig.
+
+        Args:
+            name (str): The name of the postprocessor block.
+            pp_type (str): The MOOSE type of the postprocessor (e.g., 'ElementAverageValue').
+            params (Optional[Dict[str, Any]], optional): A dictionary of parameters for the postprocessor.
+        """
+        # Extract standard parameters from the params dict to pass to the base class
+        execute_on = params.pop('execute_on', None)
+        variable = params.pop('variable', None)
+        variables = params.pop('variables', None)
+
+        super().__init__(name=name,
+                         pp_type=pp_type,
+                         execute_on=execute_on,
+                         variable=variable,
+                         variables=variables,
+                         other_params=params)
+
+
 class SimpleFluidPropertiesConfig:
     """
     Configuration for a set of constant fluid properties, designed to be used with
