@@ -649,3 +649,19 @@ class Data1D:
             level="INFO"
         )
 
+    def savez(self, filename: str) -> None:
+        """
+        Save the current data, taxis, and start_time to an .npz file.
+
+        Args:
+            filename (str): The path to the .npz file where data will be saved.
+
+        Raises:
+            ValueError: If data or taxis is not loaded or empty.
+        """
+        if self.data is None or self.taxis is None or self.data.size == 0 or self.taxis.size == 0:
+            self.history.add_record("Error: Cannot save, data or taxis is not loaded or is empty.", level="ERROR")
+            raise ValueError("Data or taxis is not loaded or is empty.")
+
+        np.savez(filename, data=self.data, taxis=self.taxis, start_time=self.start_time.isoformat())
+        self.history.add_record(f"Data saved to {filename}.", level="INFO")

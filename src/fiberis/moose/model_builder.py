@@ -721,9 +721,11 @@ class ModelBuilder:
 
         strain_mat = MooseBlock("strain", "ComputeSmallStrain")
         strain_mat.add_param("displacements", ' '.join(displacements))
+        strain_mat.add_param("block", ' '.join(all_block_names))
         mat_block.add_sub_block(strain_mat)
 
         stress_mat = MooseBlock("stress", "ComputeLinearElasticStress")
+        stress_mat.add_param("block", ' '.join(all_block_names))
         mat_block.add_sub_block(stress_mat)
 
         vol_strain_mat = MooseBlock("vol_strain", "PorousFlowVolumetricStrain")

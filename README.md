@@ -2,7 +2,7 @@
 
 **fibeRIS: Distributed Fiber Optic Sensing (DFOS) Analyzer and Simulator for Reservoir Engineering**
 
-`fibeRIS` is a Python-based toolkit designed for the analysis, simulation, and management of data relevant to reservoir engineering, with a particular focus on Distributed Fiber Optic Sensing (DFOS) data. This project provides modules for handling multi-dimensional datasets, performing signal processing, simulating pressure diffusion, and interacting with the MOOSE (Multiphysics Object-Oriented Simulation Environment) framework.
+`fibeRIS` is a Python-based toolkit designed by Shenyao Jin, the initial purpose is for the analysis, simulation, and management of data relevant to reservoir engineering, with a particular focus on Distributed Fiber Optic Sensing (DFOS) data. This project provides modules for handling multi-dimensional datasets, performing signal processing, simulating pressure diffusion, and interacting with the MOOSE (Multiphysics Object-Oriented Simulation Environment) framework.
 
 # Installation
 
@@ -89,4 +89,6 @@ The `examples` directory contains scripts and notebooks demonstrating various fu
 
 # License
 
-This project is licensed under the WTFPL – Do What the Fuck You Want to Public License. See the LICENSE file for details.
+Current version of `fiberis` is licensed under the WTFPL – Do What the Fuck You Want to Public License. See the LICENSE file for details.
+
+I will turn this repo into private not later than 2026 RCP sponsor meeting, at that time `fiberis` will be property of RCP's sponsors. 
