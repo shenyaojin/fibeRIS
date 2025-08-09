@@ -68,12 +68,15 @@ class ModelBuilder:
         return unique_op_name
 
     def build_stitched_mesh_for_fractures(self,
-                                          fracture_y_coords: List[float],
+                                          fracture_y_coords: Union[float, List[float]],
                                           domain_bounds: Tuple[float, float],
                                           domain_length: float = 1000.0,
                                           nx: int = 100,
                                           ny_per_layer_half: int = 20,
                                           bias_y: float = 1.3):
+        # Handle both single float and list of floats for fracture_y_coords
+        if isinstance(fracture_y_coords, (int, float)):
+            fracture_y_coords = [fracture_y_coords]
         ymin, ymax = domain_bounds
         all_y_points = sorted(list(set([ymin, ymax] + fracture_y_coords)), reverse=True)
 
