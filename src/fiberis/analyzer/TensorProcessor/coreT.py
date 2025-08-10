@@ -10,7 +10,6 @@ from typing import Optional, Union, List, Any, Dict
 
 # Fiberis imports
 from fiberis.utils.history_utils import InfoManagementSystem
-from moose_env.moose.modules.solid_mechanics.test.tests.capped_mohr_coulomb.small_deform_hard_3_13 import expect3
 
 
 class CoreTensor:
@@ -94,7 +93,6 @@ class CoreTensor:
             self.set_dim(data.shape[0])
 
         self.history.add_record(f"Set data with shape: {self.data.shape}")
-        self._validate_consistency()
         return self # Allow method chaining
 
     def set_taxis(self, taxis: np.ndarray):
@@ -129,7 +127,6 @@ class CoreTensor:
         # --- Assignment and Logging ---
         self.taxis = taxis.copy()
         self.history.add_record(f"Set taxis with size: {len(self.taxis)}")
-        self._validate_consistency()
         return self # Allow method chaining
 
     def set_dim(self, dim: int):
@@ -151,7 +148,6 @@ class CoreTensor:
 
         self.dim = dim
         self.history.add_record(f"Set dim to: {self.dim}")
-        self._validate_consistency()
         return self # Allow method chaining
 
     def set_start_time(self, start_time: datetime.datetime):
@@ -187,11 +183,9 @@ class CoreTensor:
     def load_npz(self, filename: str) -> 'CoreTensor':
         """
         Load data from a .npz file.
-        Expected keys: 'data', 'taxis', 'dim', 'start_time', 'name'.
-
-        :param filepath: Path to the .npz file.
+        Expected keys: 'data', 'taxis', 'dim'. Optional: 'start_time', 'name'.
+        :param filename: Path to the .npz file.
         """
-
         if not filename.endswith('.npz'):
             filename_ext = filename + ".npz"
         else:
@@ -200,19 +194,52 @@ class CoreTensor:
         self.history.add_record(f"Loading data from {filename_ext}")
 
         try:
-            data_structure = np.load(filename_ext, allow_pickle='True')
+            data_structure = np.load(filename_ext, allow_pickle=True)
         except FileNotFoundError:
             self.history.add_record(f"Error: File {filename_ext} not found.", level='error')
             raise
 
         try:
-            loaded_data = data_structure['data']
-            loaded_taxis = data_structure['taxis']
-            loaded_dim = data_structure['dim'].item()  # Use .item() to get the scalar value
-            start_time_raw = data_structure['start_time']
-        except KeyError as e:
-            self.history.add_record(f"Error: Missing key in .npz file: {e}", level='error')
-            raise KeyError(f"Missing key in .npz file: {e}")
+            # Required attributes
+            self.set_data(data_structure['data'])
+            self.set_taxis(data_structure['taxis'])
+            self.set_dim(int(data_structure['dim']))
 
-    # For other functions, to be implemented in the future. I decided to bypass the implementation of these functions
-    # and turn to Data1D to partially implement the tensor part.
+            # Optional attributes
+            if 'start_time' in data_structure and data_structure['start_time'].item() is not None:
+                start_time_raw = data_structure['start_time'].item()
+                if isinstance(start_time_raw, datetime.datetime):
+                    self.set_start_time(start_time_raw)
+
+            if 'name' in data_structure and data_structure['name'].item() is not None:
+                self.set_name(str(data_structure['name'].item()))
+
+        except KeyError as e:
+            self.history.add_record(f"Error: Missing required key in .npz file: {e}", level='error')
+            raise KeyError(f"Missing required key in .npz file: {e}")
+
+        self.history.add_record(f"Successfully loaded data from {filename_ext}.", level="INFO")
+        return self
+
+    def savez(self, filename: str) -> 'CoreTensor':
+        """
+        Save the current tensor data to an .npz file.
+        :param filename: The path to the .npz file where data will be saved.
+        """
+        if self.data is None or self.taxis is None or self.dim is None:
+            self.history.add_record("Error: Cannot save, essential data attributes are not set.", level="ERROR")
+            raise ValueError("Data, taxis, and dim must be set before saving.")
+
+        if not filename.endswith('.npz'):
+            filename += '.npz'
+
+        np.savez(
+            filename,
+            data=self.data,
+            taxis=self.taxis,
+            dim=self.dim,
+            start_time=self.start_time,
+            name=self.name
+        )
+        self.history.add_record(f"Data successfully saved to {filename}.", level="INFO")
+        return self

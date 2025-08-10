@@ -5,6 +5,8 @@
 
 import numpy as np
 from fiberis.io import core
+from fiberis.analyzer.Data1D import Data1DGauge
+import os
 
 
 class MarinerGauge1D(core.DataIO):
@@ -13,9 +15,7 @@ class MarinerGauge1D(core.DataIO):
         """
         Initialize the gauge data reader
         """
-        self.taxis = None
-        self.data = None
-        self.start_time = None
+        super().__init__()
 
     def read(self, filename=None):
         """
@@ -24,6 +24,7 @@ class MarinerGauge1D(core.DataIO):
         :param filename: the filename of the npz file
         :return: None
         """
+        self.filename = filename
         data_structure = np.load(filename, allow_pickle=True)
         self.data = data_structure['value']
 
@@ -49,3 +50,31 @@ class MarinerGauge1D(core.DataIO):
         # save the data. In this case the data will only be read from fiberis.analyzer.data1d
 
         np.savez(filename, data=self.data, taxis=self.taxis, start_time=self.start_time)
+
+    def to_analyzer(self) -> Data1DGauge:
+        """
+        Directly creates and populates a Data1DGauge analyzer object from the loaded data.
+
+        Returns:
+            Data1DGauge: A populated analyzer object ready for use.
+        
+        Raises:
+            ValueError: If data has not been loaded by calling read() first.
+        """
+        if self.data is None or self.taxis is None or self.start_time is None:
+            raise ValueError("Data is not loaded. Please call the read() method before creating an analyzer.")
+
+        # 1. Instantiate the corresponding analyzer
+        gauge_analyzer = Data1DGauge()
+
+        # 2. Transfer data and metadata
+        gauge_analyzer.data = self.data
+        gauge_analyzer.taxis = self.taxis
+        gauge_analyzer.start_time = self.start_time
+        
+        if self.filename:
+             gauge_analyzer.name = os.path.basename(self.filename)
+
+        gauge_analyzer.history.add_record(f"Data populated from {self.__class__.__name__}.")
+
+        return gauge_analyzer

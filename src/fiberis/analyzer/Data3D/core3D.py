@@ -41,111 +41,50 @@ class Data3D:
         self.history: InfoManagementSystem = InfoManagementSystem()
         self.history.add_record("Data3D object initialized.", level="INFO")
 
-    def load_from_csv_series(self,
-                             directory: str,
-                             post_processor_id: int = 0,
-                             variable_index: int = 1):
+    def load_npz(self, filename: str):
         """
-        Loads data by auto-discovering all vector samplers and the time series file.
-        It uses files ending in '_0000.csv' to identify each unique sampler.
-
-        Args:
-            directory (str): The directory containing the MOOSE output CSV files.
-            post_processor_id (int): The integer index of the sampler to load. Samplers are
-                                     sorted alphabetically by their base name. Defaults to 0.
-            variable_index (int): The column index of the variable to read from the vector CSVs.
-                                  Defaults to 1 (the second column, after 'id').
+        Loads data from a standard .npz file.
         """
-        self.history.add_record(f"Starting to load data from directory: {directory}", level="INFO")
+        self.history.add_record(f"Loading data from NPZ file: {filename}", level="INFO")
+        if not filename.endswith('.npz'):
+            filename += '.npz'
 
-        # 1. Discover all unique samplers
-        all_files = os.listdir(directory)
-        sampler_files_0000 = [f for f in all_files if f.endswith('_0000.csv')]
-
-        if not sampler_files_0000:
-            msg = f"No samplers found. Could not find files ending in '_0000.csv' in '{directory}'."
-            self.history.add_record(msg, level="ERROR")
-            raise FileNotFoundError(msg)
-
-        sampler_base_names = sorted([f.replace('_0000.csv', '') for f in sampler_files_0000])
-        self.history.add_record(f"Discovered {len(sampler_base_names)} samplers: {sampler_base_names}", level="INFO")
-
-        if not (0 <= post_processor_id < len(sampler_base_names)):
-            msg = f"post_processor_id {post_processor_id} is out of range. Select an ID between 0 and {len(sampler_base_names) - 1}."
-            self.history.add_record(msg, level="ERROR")
-            raise IndexError(msg)
-
-        self.name = sampler_base_names[post_processor_id]
-        self.history.add_record(f"Selected sampler ID {post_processor_id}: '{self.name}'", level="INFO")
-
-        # 2. Discover the time series file
-        numbered_files = {f for f in all_files if re.match(r'.*?_\d+\.csv$', f)}
-        all_csv_files = {f for f in all_files if f.endswith('.csv')}
-        time_files = list(all_csv_files - numbered_files)
-
-        if len(time_files) != 1:
-            msg = f"Expected 1 time series CSV file, but found {len(time_files)}: {time_files}"
-            self.history.add_record(msg, level="ERROR")
-            raise FileNotFoundError(msg)
-
-        time_csv_path = os.path.join(directory, time_files[0])
-        self.history.add_record(f"Discovered time series file: '{time_files[0]}'", level="INFO")
-
-        # 3. Load time vector and the selected vector file series
         try:
-            time_df = pd.read_csv(time_csv_path)
-            self.taxis = time_df.iloc[:, 0].to_numpy()
-        except Exception as e:
-            msg = f"Could not load time vector from '{time_csv_path}'. Error: {e}"
-            self.history.add_record(msg, level="ERROR")
-            raise ValueError(msg)
+            data_structure = np.load(filename, allow_pickle=True)
+            self.data = data_structure['data']
+            self.taxis = data_structure['taxis']
+            self.xaxis = data_structure['xaxis']
+            self.yaxis = data_structure['yaxis']
+            self.variable_name = str(data_structure['variable_name'])
+            self.name = str(data_structure['name'])
+            self.history.add_record(f"Successfully loaded data from {filename}.", level="INFO")
+        except FileNotFoundError:
+            self.history.add_record(f"Error: File not found at {filename}", level="ERROR")
+            raise
+        except KeyError as e:
+            self.history.add_record(f"Error: Missing key {e} in NPZ file {filename}", level="ERROR")
+            raise
 
-        vector_files_pattern = os.path.join(directory, f"{self.name}_*.csv")
-        vector_files = sorted(glob.glob(vector_files_pattern))
+    def savez(self, filename: str):
+        """
+        Saves the current data to a standard .npz file.
+        """
+        if self.data is None or self.taxis is None or self.xaxis is None or self.yaxis is None:
+            self.history.add_record("Error: Cannot save, essential data attributes are not set.", level="ERROR")
+            raise ValueError("Data and axes must be set before saving.")
 
-        if len(vector_files) != len(self.taxis):
-            msg = f"Mismatch: {len(vector_files)} vector files found, but {len(self.taxis)} time steps. Truncating to shorter length."
-            self.history.add_record(msg, level="WARNING")
-            min_len = min(len(vector_files), len(self.taxis))
-            vector_files = vector_files[:min_len]
-            self.taxis = self.taxis[:min_len]
+        if not filename.endswith('.npz'):
+            filename += '.npz'
 
-        # 4. Process the file series
-        data_list = []
-        spatial_axes_established = False
-        for file_path in vector_files:
-            try:
-                df = pd.read_csv(file_path)
-                if df.empty:
-                    num_spatial_points = len(self.xaxis) if self.xaxis is not None else 0
-                    slice_data = np.full(num_spatial_points, np.nan)
-                else:
-                    slice_data = df.iloc[:, variable_index].to_numpy()
-                    if not spatial_axes_established:
-                        self.xaxis = df.iloc[:, -3].to_numpy()
-                        self.yaxis = df.iloc[:, -2].to_numpy()
-                        self.variable_name = df.columns[variable_index]
-                        spatial_axes_established = True
-            except Exception as e:
-                self.history.add_record(f"Could not process file {file_path}. Error: {e}", level="WARNING")
-                num_spatial_points = len(self.xaxis) if self.xaxis is not None else 0
-                slice_data = np.full(num_spatial_points, np.nan)
-            data_list.append(slice_data)
+        np.savez(
+            filename,
+            data=self.data,
+            taxis=self.taxis,
+            xaxis=self.xaxis,
+            yaxis=self.yaxis,
+            variable_name=self.variable_name,
+            name=self.name
+        )
+        self.history.add_record(f"Data successfully saved to {filename}.", level="INFO")
 
-        # 5. Finalize the data array
-        if not spatial_axes_established:
-            self.history.add_record("All CSV files for this sampler were empty. Data object is empty.", level="WARNING")
-            self.data = np.empty((len(self.taxis), 0))
-        else:
-            full_len = len(self.xaxis)
-            for i, arr in enumerate(data_list):
-                if len(arr) != full_len:
-                    data_list[i] = np.full(full_len, np.nan)
-
-            # Stack to create (time, space) array
-            self.data = np.stack(data_list, axis=0)
-
-            # Transpose the data to match the expected shape (space, time)
-            self.data = self.data.T
-            self.history.add_record(f"Successfully loaded and transposed data. Final shape: {self.data.shape}",
-                                    level="INFO")
+    

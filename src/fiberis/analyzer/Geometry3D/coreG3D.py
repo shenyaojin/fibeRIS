@@ -31,6 +31,26 @@ class DataG3D():
          self.name = filename.split('/')[-1][:-4]
          self.history.add_record("Load data from file %s" % filename)
 
+     def savez(self, filename):
+         """
+         Save the current geometry data to an .npz file.
+
+         :param filename: The path to the .npz file where data will be saved.
+         """
+         if self.data is None or self.xaxis is None or self.yaxis is None or self.zaxis is None:
+             self.history.add_record("Error: Cannot save, essential data attributes are not set.", level="ERROR")
+             raise ValueError("Data and axes must be set before saving.")
+
+         if not filename.endswith('.npz'):
+             filename += '.npz'
+
+         np.savez(filename,
+                  data=self.data,
+                  xaxis=self.xaxis,
+                  yaxis=self.yaxis,
+                  zaxis=self.zaxis)
+         self.history.add_record("Save data to file %s" % filename)
+
      def calculate_md(self):
          """
          Computes and returns the measured depth (MD) for each point,

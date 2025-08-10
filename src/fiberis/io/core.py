@@ -19,6 +19,7 @@ class DataIO(ABC):
         self.taxis = None
         self.data = None
         self.start_time = None
+        self.filename = None
         # Replace the simple list-based history with the InfoManagementSystem
         self.log_system = InfoManagementSystem()
 

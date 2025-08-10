@@ -3,7 +3,9 @@
 import numpy as np
 import pandas as pd
 import datetime
+import os
 from fiberis.io import core
+from fiberis.analyzer.Data1D import Data1DGauge
 
 class MarinerPressureG1(core.DataIO):
     """
@@ -16,9 +18,6 @@ class MarinerPressureG1(core.DataIO):
         Initialize the pressure gauge data reader.
         """
         super().__init__()
-        self.taxis = None
-        self.data = None
-        self.start_time = None
 
     def read(self, filename: str):
         """
@@ -36,6 +35,7 @@ class MarinerPressureG1(core.DataIO):
         Args:
             filename (str): The path to the input CSV file.
         """
+        self.filename = filename
         try:
             # Use pandas to efficiently read and parse the CSV data
             df = pd.read_csv(filename)
@@ -98,3 +98,25 @@ class MarinerPressureG1(core.DataIO):
             start_time=self.start_time
         )
         self.record_log(f"Data successfully written to {filename}.")
+
+    def to_analyzer(self) -> Data1DGauge:
+        """
+        Directly creates and populates a Data1DGauge analyzer object from the loaded data.
+
+        Returns:
+            Data1DGauge: A populated analyzer object ready for use.
+        """
+        if self.data is None or self.taxis is None or self.start_time is None:
+            raise ValueError("Data is not loaded. Please call the read() method before creating an analyzer.")
+
+        analyzer = Data1DGauge()
+        analyzer.data = self.data
+        analyzer.taxis = self.taxis
+        analyzer.start_time = self.start_time
+        
+        if self.filename:
+            analyzer.name = os.path.basename(self.filename)
+
+        analyzer.history.add_record(f"Data populated from {self.__class__.__name__}.")
+
+        return analyzer

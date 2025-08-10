@@ -5,6 +5,8 @@
 
 import numpy as np
 from fiberis.io import core
+from fiberis.analyzer.Data1D import Data1DPumpingCurve
+import os
 
 class MarinerPP1D(core.DataIO):
 
@@ -12,21 +14,32 @@ class MarinerPP1D(core.DataIO):
         """
         Initialize the PumPing data reader
         """
-        self.taxis = None
-        self.data = None
-        self.start_time = None
+        super().__init__()
         self.label = None
 
-    def read(self, filename=None):
+    def read(self, filename: str, label: str):
         """
-        Read the pumping data from the npz file. If you want to set the data manually,
-        you can use the set_data method.
-        :param filename: the filename of the npz file
-        :return: None
-        """
+        Read a specific data series from the pumping data npz file.
 
+        The npz file is expected to contain a 'value' array (2D) and a 'label' array (1D).
+        This method will find the specified label and load the corresponding data row.
+
+        :param filename: The filename of the npz file.
+        :param label: The label of the data series to read (e.g., 'SLURRY_RATE').
+        """
+        self.filename = filename
         data_structure = np.load(filename, allow_pickle=True)
-        self.data = data_structure['value']
+
+        all_labels = list(data_structure['label'])
+        all_values = data_structure['value']
+
+        try:
+            target_index = all_labels.index(label)
+        except ValueError:
+            raise ValueError(f"Label '{label}' not found in file. Available labels: {all_labels}")
+
+        self.data = all_values[target_index]
+        self.label = label
 
         taxis_tmp = data_structure['taxis']
         # calculate the time axis for taxis_tmp is in datetime.datetime format
@@ -35,38 +48,43 @@ class MarinerPP1D(core.DataIO):
         for i in range(len(taxis_tmp)):
             self.taxis[i] = (taxis_tmp[i] - self.start_time).total_seconds()
 
-        self.label = data_structure['label']
-
-    def write(self, filename, **kwargs):
+    def write(self, filename: str, **kwargs):
         """
-        Write the pumping data to multiple npz files, each named using the provided filename and the corresponding label.
+        Write the loaded data series to a standard .npz file.
 
-        :param filename: the base filename (without extension) to save the npz files
-        :param kwargs: format options (reserved for future expansion)
-        :return: None
+        :param filename: The filename of the npz file to save.
+        :param kwargs: Reserved for future format options.
         """
+        if self.data is None or self.label is None:
+            raise ValueError("Data has not been loaded. Call read() with a specific label first.")
 
-        # Ensure filename does not end with '.npz' since multiple files will be created
-        if filename.endswith('.npz'):
-            filename = filename[:-4]
+        if not filename.endswith('.npz'):
+            filename += '.npz'
 
-        # Validate data and labels
-        if self.data is None or self.label is None or len(self.label) != self.data.shape[0]:
-            raise ValueError("Data and labels must be properly initialized and match in length.")
+        np.savez(
+            filename,
+            data=self.data,
+            taxis=self.taxis,
+            start_time=self.start_time,
+            label=self.label
+        )
 
-        # Save each label's data to a separate npz file
-        for i, lbl in enumerate(self.label):
-            # Construct the filename for this label
-            label_filename = f"{filename}{lbl}.npz"
+    def to_analyzer(self) -> Data1DPumpingCurve:
+        """
+        Directly creates and populates a Data1DPumpingCurve analyzer object.
 
-            # Extract the data for the current label
-            data_for_label = self.data[i]
+        Returns:
+            Data1DPumpingCurve: A populated analyzer object ready for use.
+        """
+        if self.data is None or self.taxis is None or self.start_time is None:
+            raise ValueError("Data is not loaded. Please call read() first.")
 
-            # Save the data along with other necessary information
-            np.savez(
-                label_filename,
-                data=data_for_label,
-                taxis=self.taxis,
-                start_time=self.start_time,
-            )
+        analyzer = Data1DPumpingCurve()
+        analyzer.data = self.data
+        analyzer.taxis = self.taxis
+        analyzer.start_time = self.start_time
+        analyzer.name = self.label
 
+        analyzer.history.add_record(f"Data populated from {self.__class__.__name__}.")
+
+        return analyzer

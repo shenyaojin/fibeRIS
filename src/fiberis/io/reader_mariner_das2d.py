@@ -2,20 +2,23 @@
 # Shenyao Jin, shenyaojin@mines.edu
 
 import numpy as np
-
+import os
 from fiberis.io import core
+from fiberis.analyzer.Data2D import DSS2D
 
 
-# need to add the self check function
 class MarinerDAS2D(core.DataIO):
+
+    def __init__(self):
+        super().__init__()
 
     def read(self, filename=None):
         """
-        Read the gauge data from the npz file.
+        Read the DAS data from the npz file.
         :param filename: the filename of the npz file
         :return: None
         """
-
+        self.filename = filename
         data_structure = np.load(filename, allow_pickle=True)
         self.taxis = data_structure['taxis']
         self.daxis = data_structure['daxis']
@@ -30,7 +33,30 @@ class MarinerDAS2D(core.DataIO):
         :return: None
         """
 
-        if filename[-4:] != '.npz':
+        if not filename.endswith('.npz'):
             filename += '.npz'
 
         np.savez(filename, data=self.data, taxis=self.taxis, start_time=self.start_time, daxis=self.daxis)
+
+    def to_analyzer(self) -> DSS2D:
+        """
+        Directly creates and populates a DSS2D analyzer object from the loaded data.
+
+        Returns:
+            DSS2D: A populated analyzer object ready for use.
+        """
+        if self.data is None or self.taxis is None or self.daxis is None or self.start_time is None:
+            raise ValueError("Data is not loaded. Please call the read() method before creating an analyzer.")
+
+        analyzer = DSS2D()
+        analyzer.data = self.data
+        analyzer.taxis = self.taxis
+        analyzer.daxis = self.daxis
+        analyzer.start_time = self.start_time
+        
+        if self.filename:
+            analyzer.name = os.path.basename(self.filename)
+
+        analyzer.history.add_record(f"Data populated from {self.__class__.__name__}.")
+
+        return analyzer

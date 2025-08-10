@@ -257,6 +257,32 @@ class Data2D:
         self.set_name(os.path.basename(filename_ext))  # Use set_name to also log the change
         self.history.add_record(f"Successfully loaded data from {filename_ext}.", level="INFO")
 
+    def savez(self, filename: str) -> None:
+        """
+        Save the current data, taxis, daxis, and start_time to a standard .npz file.
+
+        Args:
+            filename (str): The path to the .npz file where data will be saved.
+
+        Raises:
+            ValueError: If data, taxis, or daxis is not set.
+        """
+        if self.data is None or self.taxis is None or self.daxis is None:
+            self.history.add_record("Error: Cannot save, essential data attributes are not set.", level="ERROR")
+            raise ValueError("Data, taxis, and daxis must be set before saving.")
+
+        if not filename.endswith('.npz'):
+            filename += '.npz'
+
+        np.savez(
+            filename,
+            data=self.data,
+            taxis=self.taxis,
+            daxis=self.daxis,
+            start_time=self.start_time
+        )
+        self.history.add_record(f"Data successfully saved to {filename}.", level="INFO")
+
     # --- Data Manipulation Methods ---
     def select_time(self, start: Union[datetime.datetime, float, int],
                     end: Union[datetime.datetime, float, int]) -> None:

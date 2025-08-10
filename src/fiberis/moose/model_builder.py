@@ -907,7 +907,6 @@ class ModelBuilder:
         """
         # Because this is a static method, all necessary imports must be done
         # inside the method's scope.
-        import numpy as np
         from fiberis.moose.config import MatrixConfig, SRVConfig, HydraulicFractureConfig, ZoneMaterialProperties, \
             PointValueSamplerConfig, LineValueSamplerConfig, SimpleFluidPropertiesConfig
         from fiberis.analyzer.Data1D import core1D
