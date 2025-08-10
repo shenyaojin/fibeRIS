@@ -1,94 +1,73 @@
 # fibeRIS
 
-**fibeRIS: Distributed Fiber Optic Sensing (DFOS) Analyzer and Simulator for Reservoir Engineering**
+**fibeRIS: Fiber Optic Reservoir Integrated Simulator**
 
-`fibeRIS` is a Python-based toolkit designed by Shenyao Jin, the initial purpose is for the analysis, simulation, and management of data relevant to reservoir engineering, with a particular focus on Distributed Fiber Optic Sensing (DFOS) data. This project provides modules for handling multi-dimensional datasets, performing signal processing, simulating pressure diffusion, and interacting with the MOOSE (Multiphysics Object-Oriented Simulation Environment) framework.
+`fibeRIS` is a Python-based toolkit for the analysis, simulation, and management of data relevant to reservoir engineering, with a particular focus on Distributed Fiber Optic Sensing (DFOS) data. This project provides a suite of modules for handling multi-dimensional datasets, performing signal processing, simulating pressure diffusion, and programmatically controlling the [MOOSE (Multiphysics Object-Oriented Simulation Environment)](https://mooseframework.inl.gov/) framework.
 
-# Installation
+## Installation
 
-To install `fibeRIS` in editable mode (recommended during its ongoing development):
+To install `fibeRIS` in editable mode, which is recommended during its ongoing development, clone the repository and run:
 
-```
+```bash
 pip install -e .
 ```
 
-# Core Features & Workflow
+## Core Packages
 
-`fibeRIS` is organized into several key packages to support a comprehensive data processing and simulation workflow:
+`fibeRIS` is organized into several key packages that work together to support a comprehensive data processing and simulation workflow.
 
-## 1. Data Input/Output (`fiberis.io`)
+### 1. `fiberis.io`
 
-The `fiberis.io` package handles reading and writing standard data that can be handled by `fiberis.analyzer`.
+The data ingestion engine of the toolkit. This package provides a collection of readers to load data from various raw or proprietary file formats and convert them into a standardized structure for analysis.
 
-## 2. Data Analysis (`fiberis.analyzer`)
+**[>> Learn more in the `fiberis.io` README](./src/fiberis/io/README.md)**
 
-This package provides classes and methods for analyzing various types of fiber optic and related reservoir data.
+### 2. `fiberis.analyzer`
 
-- **1D Data Analysis (`fiberis.analyzer.Data1D`)**:
-  - `core1D.Data1D`: The base class for handling 1D datasets. It includes functionalities for loading data from `.npz` files, time-based cropping (`crop`, `select_time`), time shifting (`shift`), data retrieval (`get_value_by_time`), time calculations (`calculate_time`), plotting, merging datasets (`right_merge`), and basic signal processing like removing abnormal data points (`remove_abnormal_data`) and interpolation (`interpolate`). 
-  - `Data1D_Gauge.Data1DGauge`: A specialized class for 1D gauge data, inheriting from `Data1D`. 
-  - `Data1D_PumpingCurve.Data1DPumpingCurve`: Tailored for 1D pumping curve data, providing methods to determine start and end times. 
-- **2D Data Analysis (`fiberis.analyzer.Data2D`)**:
-  - `core2D.Data2D`: The base class for 2D datasets (typically distance vs. time). It supports loading, setting axes (`taxis`, `daxis`), time and depth selection/cropping (`select_time`, `select_depth`), plotting (imshow, pcolormesh with timestamp support), merging (`right_merge`), and signal processing (e.g., `apply_lowpass_filter`). 
-  - `Data2D_XT_DSS.DSS2D`: Specialized for 2D DSS (Distributed Strain Sensing) data, often represented as XT plots (distance vs. time). 
-- **3D Data Analysis (`fiberis.analyzer.Data3D`)**:
-  - `core3D.py`: Currently a placeholder for future 3D time-discretized data analysis. 
-- **3D Geometry Analysis (`fiberis.analyzer.Geometry3D`)**:
-  - `coreG3D.DataG3D`: Base class for handling 3D geometrical data (e.g., wellbore trajectories), with methods like `calculate_md` (measured depth). 
-  - `DataG3D_md.G3DMeasuredDepth`: Specialized class for measured depth type 3D geometry data. 
+The core data analysis package. It contains classes and methods for handling various types of fiber optic and related reservoir data, organized by data dimensionality.
 
-## 3. Simulation (`fiberis.simulator`)
+-   **`Data1D`**: For 1D time-series data like gauge pressure/temperature and pumping curves.
+-   **`Data2D`**: For 2D datasets like DAS/DSS waterfall plots (distance vs. time).
+-   **`Data3D`**: For 3D datasets, particularly for post-processing spatial data over time from MOOSE simulations.
+-   **`Geometry3D`**: For handling 3D spatial path data, such as wellbore trajectories.
+-   **`TensorProcessor`**: For handling time-dependent tensor data (e.g., stress/strain tensors).
 
-This package provides tools for simulating reservoir phenomena, currently focusing on 1D pressure diffusion.
+**[>> Learn more in the `fiberis.analyzer` READMEs](./src/fiberis/analyzer/)**
 
-- **Core Simulation (`fiberis.simulator.core`)**:
-  - `pds.PDS1D_SingleSource` & `pds.PDS1D_MultiSource`: Classes for setting up and solving 1D pressure diffusion problems with single or multiple source terms. They manage mesh, source terms, boundary conditions, initial conditions, and diffusivity. 
-  - `bcs.BoundaryCondition`: Defines boundary conditions (Dirichlet, Neumann) for the PDS simulator. 
-- **Solvers (`fiberis.simulator.solver`)**:
-  - `matbuilder.py`: Builds the matrices (A, b) for the 1D diffusion problem. 
-  - `PDESolver_IMP.solver_implicit`: Solves the PDE system using implicit methods (leveraging SciPy/NumPy). 
-  - `PDESolver_EXP.solver_explicit`: Solves using an explicit iterative method (Jacobi). 
-- **Optimizer (`fiberis.simulator.optimizer`)**:
-  - `tso.time_sampling_optimizer`: Implements dynamic time step adjustment based on solution error for the PDS simulator. 
+### 3. `fiberis.simulator`
 
-## 4. MOOSE Framework Extension (`fiberis.moose`)
+A lightweight, 1D finite-difference simulator for modeling pressure diffusion in porous media. It includes tools for setting up the simulation domain, defining boundary conditions and sources, and solving the system with either implicit or explicit methods. It also features an optimizer for adaptive time-stepping.
 
-This sub-package provides a comprehensive suite of tools for interacting with the MOOSE framework, enabling programmatic control over simulation workflows. For a detailed overview, refer to the [fibeRIS MOOSE Extension README](src/fiberis/moose/README.md). 
+**[>> Learn more in the `fiberis.simulator` README](./src/fiberis/simulator/README.md)**
 
-- **Configuration (`config.py`)**: Defines Python classes (`HydraulicFractureConfig`, `SRVConfig`) to specify parameters for hydraulic fractures and stimulated reservoir volumes. 
-- **Input File Generation (`input_generator.py`)**: Generates MOOSE input files (`.i`) from Python dictionary configurations. Includes `MooseBlock` base class. 
-- **Model Building (`model_builder.py`)**: A higher-level API to construct MOOSE input files using the configuration objects, simplifying the definition of physical features and mesh operations. 
-- **Input File Editing (`input_editor.py`)**: Allows reading, modifying, and writing existing MOOSE input files using `pyhit` and `moosetree`. 
-- **Simulation Execution (`runner.py`)**: Programmatically runs MOOSE simulations, captures output, and manages the execution process, including MPI support. 
-- **Post-processing (`postprocessor.py`)**: Reads MOOSE output files (primarily Exodus `.e` files) using `meshio` and extracts data for analysis, including nodal/cell variables and time-dependent data. 
+### 4. `fiberis.moose`
 
-## 5. Utilities (`fiberis.utils`)
+A comprehensive Python interface for the MOOSE framework. This package allows for the complete automation of the simulation workflow, from building input files programmatically to execution and post-processing.
 
-A collection of helper functions supporting various operations across the `fibeRIS` package.
+-   **`config`**: A set of intuitive Python classes to represent physical and numerical concepts in MOOSE.
+-   **`model_builder`**: A high-level, fluent API for constructing complex MOOSE input files from the ground up, including advanced features like stitched mesh generation for multi-fracture systems.
+-   **`runner`**: A tool to programmatically run MOOSE simulations, including in parallel.
+-   **`postprocessor`**: Utilities to read and analyze MOOSE output files (both Exodus `.e` and CSV formats).
+-   **`input_editor`**: A tool to load, programmatically modify, and save existing MOOSE input files.
 
-- `history_utils.py`: A simple logging system (`InfoManagementSystem`) for recording operations with timestamps. 
-- `io_utils.py`: Utilities for file I/O, such as `read_h5` for reading HDF5 files. 
-- `mesh_utils.py`: Functions for mesh operations like refining a mesh (`refine_mesh`) and locating points (`locate`). 
-- `signal_utils.py`: A comprehensive set of signal processing tools, including Butterworth filters (bandpass, lowpass, highpass), FFT-based amplitude spectrum calculation, NaN filling, time difference calculation, interpolation matrix generation, curve smoothing, RMS calculation, MATLAB datenum conversion, cross-correlation, and timestamp parsing. 
-- `syn_utils.py`: Utilities for generating synthetic discrete time series data. 
-- `viz_utils.py`: Placeholder for enhanced visualization tools, particularly for multi-stage hydraulic fracturing. 
+**[>> Learn more in the `fiberis.moose` README](./src/fiberis/moose/README.md)**
 
-# Examples
+### 5. `fiberis.utils`
 
-The `examples` directory contains scripts and notebooks demonstrating various functionalities of `fibeRIS`:
+A collection of essential, reusable helper functions that support operations across the entire `fibeRIS` toolkit. This includes a rich `signal_utils` module for filtering and correlation, a history/logging system, mesh utilities, and more.
 
-- `101r_real_DASdata_viz_hwell.py`: Visualizing real-world DAS data from a horizontal well, integrating pumping data and gauge measurements. 
-- `102r_IOstandard_example.ipynb` and `102rp_IOstandard_example.py`: Showcasing the data input/output standards and reader functionalities.  
+**[>> Learn more in the `fiberis.utils` README](./src/fiberis/utils/README.md)**
 
-# Future Work
+## Examples
 
-- [ ] Fully implement `reader_mariner_rfs.py` for Mariner RFS data.
-- [ ] Expand 3D data processing capabilities in `fiberis.analyzer.Data3D`.
-- [ ] Further develop visualization tools in `fiberis.utils.viz_utils.py`.
-- [ ] Continuously refine and test the 1D PDS simulator, addressing any known issues.
+The `examples` directory contains scripts and notebooks demonstrating various functionalities of `fibeRIS`, from visualizing real-world DAS data to showcasing the standard data I/O workflow.
 
-# License
+## Future Work
 
-Current version of `fiberis` is licensed under the WTFPL – Do What the Fuck You Want to Public License. See the LICENSE file for details.
+-   Complete the implementation of the `reader_mariner_rfs.py` for RFS data.
+-   Expand 3D data processing and visualization capabilities.
+-   Continuously refine and validate the 1D PDS simulator.
 
-I will turn this repo into private not later than 2026 RCP sponsor meeting, at that time `fiberis` will be property of RCP's sponsors. 
+## License
+
+This project is licensed under the WTFPL – Do What the Fuck You Want to Public License. See the `LICENSE` file for details.
