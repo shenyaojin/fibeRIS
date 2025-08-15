@@ -112,3 +112,55 @@ class MOOSEPointSamplerReader(core.DataIO):
             start_time=self.start_time
         )
         self.record_log(f"Data successfully written to {filename}.", level="INFO")
+
+    def get_max_index(self, folder: str) -> int:
+        """
+        Get the maximum index of the variable in the MOOSE Point Sampler output.
+
+        Args:
+            folder (str): The path to the directory containing the MOOSE output files.
+
+        Returns:
+            int: The maximum index of the variable.
+        """
+        self.record_log(f"Attempting to find and read MOOSE point sampler CSV in '{folder}'", level="INFO")
+
+        # 1. Automatically discover the point sampler CSV file
+        try:
+            # Find all CSV files that are NOT part of a numbered sequence
+            all_files = os.listdir(folder)
+            numbered_files = {f for f in all_files if re.match(r'.*?_\d+\.csv$', f)}
+            all_csv_files = {f for f in all_files if f.endswith('.csv')}
+            sampler_files = list(all_csv_files - numbered_files)
+
+            if len(sampler_files) != 1:
+                msg = f"Expected to find 1 point sampler CSV, but found {len(sampler_files)}: {sampler_files}"
+                self.record_log(msg, level="ERROR")
+                raise FileNotFoundError(msg)
+
+            csv_path = os.path.join(folder, sampler_files[0])
+            self.record_log(f"Identified point sampler file: '{sampler_files[0]}'", level="INFO")
+
+        except Exception as e:
+            self.record_log(f"Error during file discovery: {e}", level="ERROR")
+            raise
+
+        # 2. Read the data using pandas
+        try:
+            df = pd.read_csv(csv_path)
+
+            if df.shape[1] <= 1:
+                msg = f"CSV file has no data columns. Found {df.shape[1]} columns."
+                self.record_log(msg, level="ERROR")
+                raise ValueError(msg)
+
+            # The first column is always time, so the maximum index is the number of data columns minus one
+            max_index = df.shape[1] - 1
+
+            self.record_log(f"Maximum index of variable in '{csv_path}' is {max_index}.", level="INFO")
+            return max_index
+
+        except Exception as e:
+            msg = f"Failed to read or process CSV file at '{csv_path}'. Error: {e}"
+            self.record_log(msg, level="ERROR")
+            raise ValueError(msg) from e

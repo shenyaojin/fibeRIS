@@ -152,3 +152,53 @@ class MOOSEVectorPostProcessorReader(core.DataIO):
             name=self.sampler_name
         )
         self.record_log(f"Data successfully written to {filename}.", level="INFO")
+
+    def get_max_indices(self, directory: str) -> tuple[int, int]:
+        """
+        Get the maximum post_processor_id and variable_index from the data files.
+
+        Args:
+            directory (str): The directory containing the MOOSE output CSV files.
+
+        Returns:
+            tuple[int, int]: A tuple containing the max_processor_id and max_variable_index.
+        """
+        self.record_log(f"Getting max indices from directory: {directory}", level="INFO")
+
+        # 1. Discover all unique samplers to find max_processor_id
+        all_files = os.listdir(directory)
+        sampler_files_0000 = [f for f in all_files if f.endswith('_0000.csv')]
+
+        if not sampler_files_0000:
+            msg = f"No samplers found. Could not find files ending in '_0000.csv' in '{directory}'."
+            self.record_log(msg, level="ERROR")
+            raise FileNotFoundError(msg)
+
+        max_processor_id = len(sampler_files_0000) - 1
+
+        # 2. Read the first sampler's file to find max_variable_index
+        try:
+            first_sampler_file = sampler_files_0000[0]
+            csv_path = os.path.join(directory, first_sampler_file)
+            df = pd.read_csv(csv_path)
+
+            if df.shape[1] < 5: # id, var, x, y, z
+                 msg = f"File '{first_sampler_file}' has fewer than 5 columns, so no variables available."
+                 self.record_log(msg, level="ERROR")
+                 raise ValueError(msg)
+            
+            # The columns are typically [id, var1, var2, ..., x, y, z]
+            # The last 3 are coordinates. The first is id.
+            # So, valid variable indices are from 1 to shape[1] - 4
+            max_variable_index = df.shape[1] - 4
+
+            self.record_log(f"Max processor ID: {max_processor_id}", level="INFO")
+            self.record_log(f"Max variable index: {max_variable_index}", level="INFO")
+
+            return max_processor_id, max_variable_index
+
+        except Exception as e:
+            msg = f"Could not determine max_variable_index from '{first_sampler_file}'. Error: {e}"
+            self.record_log(msg, level="ERROR")
+            raise ValueError(msg) from e
+

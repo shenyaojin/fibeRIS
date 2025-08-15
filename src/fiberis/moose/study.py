@@ -7,9 +7,9 @@ import shutil
 import numpy as np
 from typing import List, Dict, Any, Callable, Optional, Tuple
 
-from .input_editor import MooseInputEditor
-from .runner import MooseRunner
-from .postprocessor import MoosePointSamplerSet
+from fiberis.moose.input_editor import MooseInputEditor
+from fiberis.moose.runner import MooseRunner
+from fiberis.moose.postprocessor import MoosePointSamplerSet
 
 # Make scipy an optional dependency
 try:

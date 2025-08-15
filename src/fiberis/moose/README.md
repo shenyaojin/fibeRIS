@@ -1,6 +1,7 @@
 # `fiberis.moose`
 
 This package provides a powerful Python interface to the MOOSE (Multiphysics Object-Oriented Simulation Environment) framework. It is designed to automate the entire simulation workflow, from creating complex input files programmatically to running the simulation and post-processing the results.
+You must have a valid `MOOSE` installation to use this package, as it relies on MOOSE's libraries and tools.
 
 ## Core Goal
 
