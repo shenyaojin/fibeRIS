@@ -404,6 +404,41 @@ class Data1D:
         self.history.add_record(f"Plot generated for '{self.name if self.name else 'Unnamed Data1D'}'.", level="INFO")
         return lines
 
+    def print_info(self) -> None:
+        """
+        Print a summary of the Data1D object's attributes.
+        For array attributes (taxis, data), it prints up to the first 10 elements.
+        """
+        print(f"--- Data1D Object Summary: {self.name or 'Unnamed'} ---")
+
+        print(f"Name: {self.name if self.name else 'Not set'}")
+        print(f"Start Time: {self.start_time.isoformat() if self.start_time else 'Not set'}")
+
+        # Data
+        if self.data is not None:
+            print(f"Data: Length={self.data.shape[0]}")
+            if self.data.size > 0:
+                if self.data.size < 10:
+                    print(f"  Values: {self.data}")
+                else:
+                    print(f"  Values (first 10): {self.data[:10]}...")
+        else:
+            print("Data: Not set")
+
+        # Time Axis
+        if self.taxis is not None:
+            print(f"Time Axis (taxis): Length={self.taxis.shape[0]}")
+            if self.taxis.size > 0:
+                if self.taxis.size < 10:
+                    print(f"  Values: {self.taxis}")
+                else:
+                    print(f"  Values (first 10): {self.taxis[:10]}...")
+        else:
+            print("Time Axis (taxis): Not set")
+
+        print(f"History contains {len(self.history.records)} records.")
+        print("----------------------------------------------------")
+
     def right_merge(self, other_data: 'Data1D') -> None:
         """
         Merge another Data1D instance to the right (chronologically) of this instance.

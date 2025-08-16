@@ -1,7 +1,7 @@
 # src/fiberis/io/reader_moose_vpp.py
 # Reader for MOOSE VectorPostProcessor CSV file series.
 # Shenyao Jin, shenyaojin@mines.edu, 08/09/2025
-
+import datetime
 import os
 import re
 import glob
@@ -24,6 +24,7 @@ class MOOSEVectorPostProcessorReader(core.DataIO):
         super().__init__()
         self.xaxis: Optional[np.ndarray] = None
         self.yaxis: Optional[np.ndarray] = None
+        self.daxis: Optional[np.ndarray] = None
         self.variable_name: Optional[str] = None
         self.sampler_name: Optional[str] = None
 
@@ -107,6 +108,9 @@ class MOOSEVectorPostProcessorReader(core.DataIO):
                     if not spatial_axes_established:
                         self.xaxis = df.iloc[:, -3].to_numpy()
                         self.yaxis = df.iloc[:, -2].to_numpy()
+                        self.daxis = np.sqrt(
+                            (self.xaxis - self.xaxis[0])**2 + (self.yaxis - self.yaxis[0])**2
+                        )
                         self.variable_name = df.columns[variable_index]
                         spatial_axes_established = True
             except Exception as e:
@@ -146,10 +150,9 @@ class MOOSEVectorPostProcessorReader(core.DataIO):
             filename,
             data=self.data,
             taxis=self.taxis,
-            xaxis=self.xaxis,
-            yaxis=self.yaxis,
-            variable_name=self.variable_name,
-            name=self.sampler_name
+            daxis=self.daxis,
+            name=self.sampler_name,
+            start_time = datetime.datetime.now()
         )
         self.record_log(f"Data successfully written to {filename}.", level="INFO")
 

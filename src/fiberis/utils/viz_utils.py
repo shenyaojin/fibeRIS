@@ -9,7 +9,7 @@ from fiberis.io.reader_moose_ps import MOOSEPointSamplerReader
 
 # ------ MOOSE related plotting functions ------
 
-# MOOSE post processor plotting function
+# MOOSE post processor plotting function: point sampler
 def plot_point_samplers(folder, output_dir):
     """
     Reads all point sampler data from a given folder and plots each variable.
@@ -40,6 +40,7 @@ def plot_point_samplers(folder, output_dir):
         plt.savefig(f"{output_dir}/{point_samplers.variable_name}.png")
         plt.close()
 
+# MOOSE post processor plotting function: vector sampler
 def plot_vector_samplers(folder, output_dir):
     """
     Reads all vector sampler data from a given folder and plots each variable

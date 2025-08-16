@@ -283,6 +283,47 @@ class Data2D:
         )
         self.history.add_record(f"Data successfully saved to {filename}.", level="INFO")
 
+    def print_info(self) -> None:
+        """
+        Print a summary of the Data2D object's attributes.
+        For array attributes (taxis, daxis), it prints up to the first 10 elements.
+        """
+        print(f"--- Data2D Object Summary: {self.name or 'Unnamed'} ---")
+
+        print(f"Name: {self.name if self.name else 'Not set'}")
+        print(f"Start Time: {self.start_time.isoformat() if self.start_time else 'Not set'}")
+
+        if self.data is not None:
+            print(f"Data Shape: {self.data.shape}")
+        else:
+            print("Data: Not set")
+
+        # Time Axis
+        if self.taxis is not None:
+            print(f"Time Axis (taxis): Length={self.taxis.shape[0]}")
+            if self.taxis.size > 0:
+                if self.taxis.size < 10:
+                    print(f"  Values: {self.taxis}")
+                else:
+                    print(f"  Values (first 10): {self.taxis[:10]}...")
+        else:
+            print("Time Axis (taxis): Not set")
+
+        # Depth Axis
+        if self.daxis is not None:
+            print(f"Depth Axis (daxis): Length={self.daxis.shape[0]}")
+            if self.daxis.size > 0:
+                if self.daxis.size < 10:
+                    print(f"  Values: {self.daxis}")
+                else:
+                    print(f"  Values (first 10): {self.daxis[:10]}...")
+        else:
+            print("Depth Axis (daxis): Not set")
+
+        print(f"History contains {len(self.history.records)} records.")
+        print("----------------------------------------------------")
+
+
     # --- Data Manipulation Methods ---
     def select_time(self, start: Union[datetime.datetime, float, int],
                     end: Union[datetime.datetime, float, int]) -> None:
