@@ -12,6 +12,8 @@ To install `fibeRIS` in editable mode, which is recommended during its ongoing d
 pip install -e .
 ```
 
+If you want to use `moose` extension, please check this [Note](https://shenyaojin.github.io/theory/fiberis-setup/).
+
 ## Core Packages
 
 `fibeRIS` is organized into several key packages that work together to support a comprehensive data processing and simulation workflow.
