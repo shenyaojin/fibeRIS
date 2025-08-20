@@ -317,6 +317,38 @@ class Data1D:
         self.history.add_record(f"Renamed data from '{old_name if old_name else 'Unnamed'}' to '{self.name}'.",
                                 level="INFO")
 
+    def get_end_time(self, use_timestamp: bool = False) -> Union[datetime.datetime, np.float64]:
+
+        """
+        Get the end time of the data.
+
+        Args:
+            use_timestamp (bool): If True, return absolute datetime object.
+                                  If False (default), return seconds from start_time.
+
+        Returns:
+            Union[datetime.datetime, np.float64]: The end time as a datetime object or seconds.
+
+        Raises:
+            ValueError: If start_time or taxis is not set or if taxis is empty.
+        """
+        if self.start_time is None:
+            self.history.add_record("Error: Cannot get end time, start_time is not set.", level="ERROR")
+            raise ValueError("start_time is not set.")
+        if self.taxis is None:
+            self.history.add_record("Error: Cannot get end time, taxis is not set.", level="ERROR")
+            raise ValueError("taxis is not set.")
+        if self.taxis.size == 0:
+            self.history.add_record("Error: Cannot get end time, taxis is empty.", level="ERROR")
+            raise ValueError("taxis is empty.")
+
+        last_time_sec = float(self.taxis[-1])
+        if use_timestamp:
+            end_time = self.start_time + datetime.timedelta(seconds=last_time_sec)
+            return end_time
+        else:
+            return np.float64(last_time_sec)
+
     def plot(self, ax: Optional[Axes] = None, title: Optional[str] = None,
              use_timestamp: bool = False, use_legend: bool = True, **kwargs: Any) -> List[Line2D]:
         """

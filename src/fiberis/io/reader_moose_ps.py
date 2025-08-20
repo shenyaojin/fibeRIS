@@ -108,7 +108,7 @@ class MOOSEPointSamplerReader(core.DataIO):
         np.savez(
             filename,
             data=self.data,
-            taxis=self.taxis,
+            taxis=self.taxis.astype(float),
             start_time=self.start_time
         )
         self.record_log(f"Data successfully written to {filename}.", level="INFO")
