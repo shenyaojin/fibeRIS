@@ -37,6 +37,13 @@ class ModelBuilder:
         self._last_mesh_op_name_within_mesh_block: Optional[str] = None
 
     def _generate_unique_op_name(self, base_name: str, existing_names_list: List[str]) -> str:
+        """
+        Generate a unique operation name by appending a counter if the base name already exists.
+
+        :param base_name: The desired base name for the operation.
+        :param existing_names_list: List of existing operation names to check against.
+        :return: A unique operation name.
+        """
         count = 1
         op_name = base_name
         while op_name in existing_names_list:
@@ -45,6 +52,12 @@ class ModelBuilder:
         return op_name
 
     def _get_or_create_toplevel_moose_block(self, block_name: str) -> MooseBlock:
+        """
+        Get an existing top-level MOOSE block or create a new one if it doesn't exist.
+
+        :param block_name: Name of the top-level block (e.g., "Mesh", "Variables", "Kernels").
+        :return: The MooseBlock object for the requested top-level block.
+        """
         for block in self._top_level_blocks:
             if block.block_name == block_name:
                 return block
@@ -54,6 +67,15 @@ class ModelBuilder:
 
     def _add_generic_mesh_generator(self, op_name: str, op_type: str, params: Dict[str, Any],
                                     input_op: Optional[str] = "USE_LAST") -> str:
+        """
+        Add a generic mesh generator operation to the [Mesh] block.
+
+        :param op_name: Desired name for the mesh operation.
+        :param op_type: Type of mesh generator (e.g., "GeneratedMeshGenerator", "StitchedMeshGenerator").
+        :param params: Dictionary of parameters for the mesh generator.
+        :param input_op: Input operation name, or "USE_LAST" to use the last mesh operation.
+        :return: The unique name assigned to this mesh operation.
+        """
         mesh_moose_block = self._get_or_create_toplevel_moose_block("Mesh")
         all_op_names = [sb.block_name for sb in mesh_moose_block.sub_blocks]
         unique_op_name = self._generate_unique_op_name(op_name, all_op_names)
@@ -74,6 +96,20 @@ class ModelBuilder:
                                           nx: int = 100,
                                           ny_per_layer_half: int = 20,
                                           bias_y: float = 1.3):
+        """
+        Build a stitched mesh architecture optimized for modeling fractures at specific y-coordinates.
+
+        Creates layered mesh panels that are stitched together at fracture locations to enable
+        proper mesh connectivity for multi-fracture simulations.
+
+        :param fracture_y_coords: Y-coordinate(s) where fractures are located. Can be a single float or list of floats.
+        :param domain_bounds: Tuple of (ymin, ymax) defining the vertical bounds of the domain.
+        :param domain_length: Length of the domain in the x-direction.
+        :param nx: Number of elements in the x-direction.
+        :param ny_per_layer_half: Number of elements in each half-layer (above/below fracture seam).
+        :param bias_y: Mesh bias factor towards fracture seams for better resolution.
+        :return: self, allowing method chaining.
+        """
         # Handle both single float and list of floats for fracture_y_coords
         if isinstance(fracture_y_coords, (int, float)):
             fracture_y_coords = [fracture_y_coords]
@@ -125,6 +161,13 @@ class ModelBuilder:
         return self
 
     def add_hydraulic_fracture_2d(self, config: HydraulicFractureConfig, target_block_id: int):
+        """
+        Add a 2D hydraulic fracture subdomain to the mesh using a bounding box generator.
+
+        :param config: HydraulicFractureConfig object containing fracture properties.
+        :param target_block_id: Block ID to assign to this fracture subdomain.
+        :return: self, allowing method chaining.
+        """
         self._block_id_to_name_map[target_block_id] = config.name
         self._next_available_block_id = max(self._next_available_block_id, target_block_id + 1)
         half_length, half_height = config.length / 2.0, config.height / 2.0
@@ -135,6 +178,13 @@ class ModelBuilder:
         return self
 
     def add_srv_zone_2d(self, config: SRVConfig, target_block_id: int):
+        """
+        Add a 2D stimulated reservoir volume (SRV) zone subdomain to the mesh using a bounding box generator.
+
+        :param config: SRVConfig object containing SRV properties.
+        :param target_block_id: Block ID to assign to this SRV subdomain.
+        :return: self, allowing method chaining.
+        """
         self._block_id_to_name_map[target_block_id] = config.name
         self._next_available_block_id = max(self._next_available_block_id, target_block_id + 1)
         half_length, half_height = config.length / 2.0, config.height / 2.0
@@ -145,6 +195,15 @@ class ModelBuilder:
         return self
 
     def refine_blocks(self, op_name: str, block_ids: List[int], refinement_levels: Union[int, List[int]]):
+        """
+        Apply mesh refinement to specified blocks.
+
+        :param op_name: Name for the refinement operation.
+        :param block_ids: List of block IDs to refine.
+        :param refinement_levels: Refinement level(s). Can be a single int applied to all blocks,
+                                 or a list of ints with one level per block.
+        :return: self, allowing method chaining.
+        """
         str_block_ids = ' '.join(map(str, block_ids))
         if isinstance(refinement_levels, list):
             if len(refinement_levels) != len(block_ids): raise ValueError(
@@ -157,6 +216,12 @@ class ModelBuilder:
         return self
 
     def _finalize_mesh_block_renaming(self):
+        """
+        Finalize mesh construction by renaming block IDs to meaningful names.
+
+        This internal method is called during input file generation to replace
+        numeric block IDs with descriptive names based on the configured zones.
+        """
         if self._block_id_to_name_map:
             if 0 not in self._block_id_to_name_map:
                 self._block_id_to_name_map[0] = (self.matrix_config.name if self.matrix_config else "matrix")
@@ -183,23 +248,57 @@ class ModelBuilder:
         return self
 
     def set_matrix_config(self, config: 'MatrixConfig') -> 'ModelBuilder':
+        """
+        Set the matrix configuration for the reservoir.
+
+        :param config: MatrixConfig object containing matrix material properties.
+        :return: self, allowing method chaining.
+        """
         self.matrix_config = config
         return self
 
     def add_srv_config(self, config: 'SRVConfig') -> 'ModelBuilder':
+        """
+        Add a stimulated reservoir volume (SRV) configuration to the builder.
+
+        :param config: SRVConfig object containing SRV properties.
+        :return: self, allowing method chaining.
+        """
         self.srv_configs.append(config)
         return self
 
     def add_fracture_config(self, config: 'HydraulicFractureConfig') -> 'ModelBuilder':
+        """
+        Add a hydraulic fracture configuration to the builder.
+
+        :param config: HydraulicFractureConfig object containing fracture properties.
+        :return: self, allowing method chaining.
+        """
         self.fracture_configs.append(config)
         return self
 
     def add_fluid_properties_config(self, config: 'SimpleFluidPropertiesConfig') -> 'ModelBuilder':
+        """
+        Add or update a fluid properties configuration.
+
+        If a configuration with the same name already exists, it will be replaced.
+
+        :param config: SimpleFluidPropertiesConfig object containing fluid properties.
+        :return: self, allowing method chaining.
+        """
         self.fluid_properties_configs = [c for c in self.fluid_properties_configs if c.name != config.name]
         self.fluid_properties_configs.append(config)
         return self
 
     def add_variables(self, variables: List[Union[str, Dict[str, Any]]]) -> 'ModelBuilder':
+        """
+        Add variables to the [Variables] block.
+
+        :param variables: List of variable configurations. Each item can be:
+                         - A string (variable name with default settings)
+                         - A dict with 'name' key and optional 'params' dict
+        :return: self, allowing method chaining.
+        """
         vars_block = self._get_or_create_toplevel_moose_block("Variables")
         for var_config in variables:
             if isinstance(var_config, str):
@@ -218,11 +317,29 @@ class ModelBuilder:
         return self
 
     def set_main_domain_parameters_2d(self, **kwargs):
+        """
+        DEPRECATED: Set main domain parameters for 2D simulations.
+
+        This method is deprecated. Use build_stitched_mesh_for_fractures instead
+        for more robust mesh generation capabilities.
+
+        :param kwargs: Domain parameters (ignored).
+        :return: self, allowing method chaining.
+        """
         print("Warning: set_main_domain_parameters_2d is deprecated. Use build_stitched_mesh_for_fractures instead.")
         return self
 
     def add_nodeset_by_coord(self, nodeset_op_name: str, new_boundary_name: str,
                              coordinates: Union[Tuple[float, ...], str], **additional_params) -> 'ModelBuilder':
+        """
+        Add a nodeset (boundary) at specific coordinates using ExtraNodesetGenerator.
+
+        :param nodeset_op_name: Name for the nodeset operation.
+        :param new_boundary_name: Name to assign to the new boundary.
+        :param coordinates: Coordinates as a tuple of floats or a string.
+        :param additional_params: Additional parameters for the ExtraNodesetGenerator.
+        :return: self, allowing method chaining.
+        """
         params = {"new_boundary": new_boundary_name,
                   "coord": ' '.join(map(str, coordinates)) if isinstance(coordinates, tuple) else coordinates,
                   **additional_params}
@@ -462,6 +579,16 @@ class ModelBuilder:
 
     def add_boundary_condition(self, name: str, bc_type: str, variable: str, boundary_name: Union[str, List[str]],
                                params: Optional[Dict[str, Any]] = None) -> 'ModelBuilder':
+        """
+        Add a boundary condition to the [BCs] block.
+
+        :param name: Name for the boundary condition.
+        :param bc_type: Type of boundary condition (e.g., "DirichletBC", "FunctionDirichletBC").
+        :param variable: Variable to which the boundary condition applies.
+        :param boundary_name: Name(s) of the boundary/boundaries to apply the condition to.
+        :param params: Optional dictionary of additional parameters for the boundary condition.
+        :return: self, allowing method chaining.
+        """
         bcs_main_block = self._get_or_create_toplevel_moose_block("BCs")
         bc_sub_block = MooseBlock(name, block_type=bc_type)
         bc_sub_block.add_param("variable", variable)
@@ -479,6 +606,22 @@ class ModelBuilder:
                                      confine_disp_y_boundaries: Union[str, List[str]], pressure_variable: str = "pp",
                                      disp_x_variable: str = "disp_x",
                                      disp_y_variable: str = "disp_y") -> 'ModelBuilder':
+        """
+        Set up standard boundary conditions for hydraulic fracturing simulations.
+
+        This method clears existing boundary conditions and sets up:
+        - Function-based pressure injection at the well
+        - Displacement constraints in x and y directions
+
+        :param injection_well_boundary_name: Name of the injection well boundary.
+        :param injection_pressure_function_name: Name of the function defining injection pressure schedule.
+        :param confine_disp_x_boundaries: Boundary name(s) where x-displacement is constrained.
+        :param confine_disp_y_boundaries: Boundary name(s) where y-displacement is constrained.
+        :param pressure_variable: Name of the pressure variable (default: "pp").
+        :param disp_x_variable: Name of the x-displacement variable (default: "disp_x").
+        :param disp_y_variable: Name of the y-displacement variable (default: "disp_y").
+        :return: self, allowing method chaining.
+        """
         # (Content from original file)
         bcs_main_block = self._get_or_create_toplevel_moose_block("BCs")
         bcs_main_block.sub_blocks.clear()
@@ -493,6 +636,16 @@ class ModelBuilder:
         return self
 
     def add_user_object(self, name: str, uo_type: str, params: Optional[Dict[str, Any]] = None) -> 'ModelBuilder':
+        """
+        Add or update a user object in the [UserObjects] block.
+
+        If a user object with the same name already exists, it will be replaced.
+
+        :param name: Name of the user object.
+        :param uo_type: Type of the user object (e.g., "PorousFlowDictator").
+        :param params: Optional dictionary of parameters for the user object.
+        :return: self, allowing method chaining.
+        """
         # (Content from original file)
         uo_main_block = self._get_or_create_toplevel_moose_block("UserObjects")
         uo_main_block.sub_blocks = [sb for sb in uo_main_block.sub_blocks if sb.block_name != name]
@@ -507,6 +660,19 @@ class ModelBuilder:
     def set_porous_flow_dictator(self, dictator_name: str = "dictator",
                                  porous_flow_variables: Union[str, List[str]] = "pp", num_fluid_phases: int = 1,
                                  num_fluid_components: int = 1, **other_params) -> 'ModelBuilder':
+        """
+        Set up a PorousFlowDictator user object for porous flow simulations.
+
+        The PorousFlowDictator is essential for PorousFlow simulations as it manages
+        the flow variables and phase/component information.
+
+        :param dictator_name: Name for the dictator user object (default: "dictator").
+        :param porous_flow_variables: Variable name(s) for porous flow. Can be string or list.
+        :param num_fluid_phases: Number of fluid phases in the simulation.
+        :param num_fluid_components: Number of fluid components in the simulation.
+        :param other_params: Additional parameters for the PorousFlowDictator.
+        :return: self, allowing method chaining.
+        """
         # (Content from original file)
         vars_str = ' '.join(porous_flow_variables) if isinstance(porous_flow_variables, list) else porous_flow_variables
         params = {"porous_flow_vars": vars_str, "number_fluid_phases": num_fluid_phases,
@@ -559,6 +725,17 @@ class ModelBuilder:
 
     def add_piecewise_function_from_data1d(self, name: str, source_data1d: core1D.Data1D,
                                            other_params: Optional[Dict[str, Any]] = None) -> 'ModelBuilder':
+        """
+        Add a PiecewiseConstant function to the [Functions] block from a Data1D object.
+
+        This method creates a MOOSE function that can be used for time-dependent
+        boundary conditions, source terms, or other time-varying parameters.
+
+        :param name: Name for the function.
+        :param source_data1d: Data1D object containing time axis and data values.
+        :param other_params: Optional additional parameters for the PiecewiseConstant function.
+        :return: self, allowing method chaining.
+        """
         # (Content from original file)
         if not isinstance(source_data1d, core1D.Data1D):
             raise TypeError(f"source_data1d for function '{name}' must be a Data1D instance.")
