@@ -322,7 +322,7 @@ class ModelBuilder:
         :return: self, allowing method chaining.
         """
         kernels_main_block = self._get_or_create_toplevel_moose_block("Kernels")
-        kernel_obj = MooseBlock(kernel_name, block_type=" ")
+        kernel_obj = MooseBlock(kernel_name, block_type="StressDivergenceTensors")
         kernel_obj.add_param("variable", variable)
         kernel_obj.add_param("component", component)
         kernels_main_block.add_sub_block(kernel_obj)
@@ -366,6 +366,55 @@ class ModelBuilder:
         kernel_obj.add_param("fluid_component", fluid_component)
         kernels_main_block.add_sub_block(kernel_obj)
         return self
+
+    def add_porous_flow_mass_time_derivative_kernel(self, kernel_name: str, variable: str,
+                                                    fluid_component: int = 0) -> 'ModelBuilder':
+        """
+        Add a PorousFlowMassTimeDerivative kernel to the [Kernels] block.
+        See https://mooseframework.inl.gov/source/kernels/PorousFlowMassTimeDerivative.html for details.
+
+        :param kernel_name: the name of the kernel.
+        :param variable: the variable to which the mass time derivative is applied.
+        :param fluid_component: the fluid component index (0 for first component, 1 for second, etc.).
+        :return: self, allowing method chaining.
+        """
+
+        kernels_main_block = self._get_or_create_toplevel_moose_block("Kernels")
+        kernel_obj = MooseBlock(kernel_name, block_type="PorousFlowMassTimeDerivative")
+        kernel_obj.add_param("variable", variable)
+        kernel_obj.add_param("fluid_component", fluid_component)
+        kernels_main_block.add_sub_block(kernel_obj)
+        return self
+
+    # Custom kernel adding method:
+    def add_custom_kernel(self, kernel_type: str, kernel_name: str, variable: str, params: Optional[Dict[str, Any]] = None,
+                          **kwargs) -> 'ModelBuilder':
+        """
+        Add a custom kernel to the [Kernels] block.
+        This method allows adding any kernel type by specifying its type and parameters.
+
+        :param kernel_type: The type of the kernel as defined in MOOSE documentation. E.g., "TimeDerivative", "FunctionDiffusion", etc.
+        :param kernel_name: The name of the kernel.
+        :param variable: The variable to which the kernel is applied.
+        :param params: A dictionary of additional parameters specific to the kernel type.
+        :param kwargs: Additional keyword arguments that are passed directly as parameters to the MOOSE kernel.
+        :return: self, allowing method chaining.
+        """
+        kernels_main_block = self._get_or_create_toplevel_moose_block("Kernels")
+        kernel_obj = MooseBlock(kernel_name, block_type=kernel_type)
+        kernel_obj.add_param("variable", variable)
+
+        all_params = params.copy() if params else {}
+        all_params.update(kwargs)
+
+        if all_params:
+            for p_name, p_val in all_params.items():
+                kernel_obj.add_param(p_name, p_val)
+
+        kernels_main_block.add_sub_block(kernel_obj)
+        print(f"Info: Added custom Kernel '{kernel_name}' of type '{kernel_type}'.")
+        return self
+
 
     # --- Adaptivity Block ---
     # Use AMA to set adaptivity options.
