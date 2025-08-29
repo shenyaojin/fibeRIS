@@ -1116,7 +1116,6 @@ class ModelBuilder:
             ts_block = MooseBlock("TimeStepper", block_type="IterationAdaptiveDT")
             ts_block.add_param("dt", dt)
             ts_block.add_param("timestep_limiting_function", ' '.join(function_names))
-            ts_block.add_param("force_step_every_function_point", True)
             exec_block.add_sub_block(ts_block)
 
         else:

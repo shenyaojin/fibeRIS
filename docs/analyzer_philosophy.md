@@ -25,7 +25,7 @@ The entire `analyzer` package is structured by the dimensionality of the data it
 
 -   `Data1D`: For 1D time-series data (e.g., a single gauge reading over time).
 -   `Data2D`: For 2D matrix data (e.g., fiber optic data with axes of depth and time).
--   `Data3D`: For 3D data, currently tailored to MOOSE simulation outputs which represent a 2D spatial field evolving over time.
+-   `Data3D`: For 3D data, currently tailored to MOOSE simulation outputs which rep resent a 2D spatial field evolving over time.
 -   `Geometry3D`: For 3D spatial path data, like a wellbore trajectory, which may not have a time component.
 -   `TensorProcessor`: For tensor data that evolves over time (e.g., a 3x3 stress tensor at each time step).
 
