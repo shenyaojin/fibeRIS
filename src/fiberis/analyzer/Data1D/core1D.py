@@ -12,7 +12,6 @@ from matplotlib.axes import Axes
 from matplotlib.lines import Line2D
 import os  # For path operations
 
-
 class Data1D:
     """
     Class for handling one-dimensional time-series data.
