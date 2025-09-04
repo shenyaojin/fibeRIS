@@ -1,11 +1,12 @@
 # fibeRIS/src/fiberis/io/reader_mariner_pressureg1.py
+# Designed to load pressureg1.csv files from Mariner
 
 import numpy as np
 import pandas as pd
 import datetime
 import os
 from fiberis.io import core
-from fiberis.analyzer.Data1D import Data1DGauge
+from fiberis.analyzer.Data1D import Data1D_Gauge
 
 class MarinerPressureG1(core.DataIO):
     """
@@ -99,7 +100,7 @@ class MarinerPressureG1(core.DataIO):
         )
         self.record_log(f"Data successfully written to {filename}.")
 
-    def to_analyzer(self) -> Data1DGauge:
+    def to_analyzer(self) -> Data1D_Gauge.Data1DGauge:
         """
         Directly creates and populates a Data1DGauge analyzer object from the loaded data.
 
@@ -109,7 +110,7 @@ class MarinerPressureG1(core.DataIO):
         if self.data is None or self.taxis is None or self.start_time is None:
             raise ValueError("Data is not loaded. Please call the read() method before creating an analyzer.")
 
-        analyzer = Data1DGauge()
+        analyzer = Data1D_Gauge.Data1DGauge()
         analyzer.data = self.data
         analyzer.taxis = self.taxis
         analyzer.start_time = self.start_time

@@ -1,10 +1,10 @@
 # Utils for OptaSense - Bakken Mariner - Low Frequency DAS data
 # Shenyao Jin, shenyaojin@mines.edu
+# A simplified version and can not read h5.
 
 import numpy as np
 import os
 from fiberis.io import core
-from fiberis.analyzer.Data2D import DSS2D
 
 
 class MarinerDAS2D(core.DataIO):
@@ -37,26 +37,3 @@ class MarinerDAS2D(core.DataIO):
             filename += '.npz'
 
         np.savez(filename, data=self.data, taxis=self.taxis, start_time=self.start_time, daxis=self.daxis)
-
-    def to_analyzer(self) -> DSS2D:
-        """
-        Directly creates and populates a DSS2D analyzer object from the loaded data.
-
-        Returns:
-            DSS2D: A populated analyzer object ready for use.
-        """
-        if self.data is None or self.taxis is None or self.daxis is None or self.start_time is None:
-            raise ValueError("Data is not loaded. Please call the read() method before creating an analyzer.")
-
-        analyzer = DSS2D()
-        analyzer.data = self.data
-        analyzer.taxis = self.taxis
-        analyzer.daxis = self.daxis
-        analyzer.start_time = self.start_time
-        
-        if self.filename:
-            analyzer.name = os.path.basename(self.filename)
-
-        analyzer.history.add_record(f"Data populated from {self.__class__.__name__}.")
-
-        return analyzer

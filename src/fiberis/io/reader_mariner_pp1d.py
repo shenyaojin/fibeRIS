@@ -5,7 +5,7 @@
 
 import numpy as np
 from fiberis.io import core
-from fiberis.analyzer.Data1D import Data1DPumpingCurve
+from fiberis.analyzer.Data1D import Data1D_PumpingCurve
 import os
 
 class MarinerPP1D(core.DataIO):
@@ -69,7 +69,7 @@ class MarinerPP1D(core.DataIO):
             label=self.label
         )
 
-    def to_analyzer(self) -> Data1DPumpingCurve:
+    def to_analyzer(self) -> Data1D_PumpingCurve.Data1DPumpingCurve:
         """
         Directly creates and populates a Data1DPumpingCurve analyzer object.
 
@@ -79,7 +79,7 @@ class MarinerPP1D(core.DataIO):
         if self.data is None or self.taxis is None or self.start_time is None:
             raise ValueError("Data is not loaded. Please call read() first.")
 
-        analyzer = Data1DPumpingCurve()
+        analyzer = Data1D_PumpingCurve.Data1DPumpingCurve()
         analyzer.data = self.data
         analyzer.taxis = self.taxis
         analyzer.start_time = self.start_time

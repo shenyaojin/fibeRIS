@@ -5,7 +5,7 @@ import pandas as pd
 import datetime
 import os
 from fiberis.io import core
-from fiberis.analyzer.Data1D import Data1D
+from fiberis.analyzer.Data1D.core1D import Data1D
 
 
 class MOOSEcsv_pp1d(core.DataIO):
