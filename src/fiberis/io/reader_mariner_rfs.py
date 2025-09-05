@@ -1,5 +1,6 @@
 # Utils for XOM - Bakken Mariner - DSS-RFS data
 # Shenyao Jin, shenyaojin@mines.edu
+# OUTDATED. DO NOT USE IT ANYMORE. USE reader_mariner_dssh5.py INSTEAD
 
 import numpy as np
 from fiberis.io import core

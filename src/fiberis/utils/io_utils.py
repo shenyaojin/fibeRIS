@@ -3,12 +3,7 @@ import h5py
 
 # Dictionary of possible HDF5 keys for DAS data components.
 # The function will iterate through these keys to find the correct ones.
-H5_KEYS = {
-    'data': ['data', 'Acquisition/Raw[0]/RawData'],
-    'daxis': ['depth'],
-    'taxis': ['stamps_unix', 'Acquisition/Raw[0]/RawDataTime'],
-    'start_time': ['stamps']
-}
+
 
 
 # Modified from Jin's OptaSense DAS processing code.
@@ -26,6 +21,13 @@ def read_h5(filename):
         - taxis (numpy.ndarray): The 1D raw timestamps. (None if not found)
         - start_time: The acquisition start time, type depends on H5 file. (None if not found)
     """
+    H5_KEYS = {
+        'data': ['data', 'Acquisition/Raw[0]/RawData'],
+        'daxis': ['depth'],
+        'taxis': ['stamps_unix', 'Acquisition/Raw[0]/RawDataTime'],
+        'start_time': ['stamps']
+    }
+
     data = None
     daxis = None
     taxis = None
