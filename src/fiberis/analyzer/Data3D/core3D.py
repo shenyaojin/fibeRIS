@@ -87,4 +87,62 @@ class Data3D:
         )
         self.history.add_record(f"Data successfully saved to {filename}.", level="INFO")
 
-    
+    def get_info_str(self) -> str:
+        """
+        Get a summary string of the Data3D object's attributes.
+        For array attributes, it shows up to the first 10 elements.
+        """
+        info_lines = [f"--- Data3D Object Summary: {self.name or 'Unnamed'} ---"]
+
+        info_lines.append(f"Name: {self.name if self.name else 'Not set'}")
+        info_lines.append(f"Variable Name: {self.variable_name if self.variable_name else 'Not set'}")
+
+        if self.data is not None:
+            info_lines.append(f"Data Shape: {self.data.shape}")
+        else:
+            info_lines.append("Data: Not set")
+
+        # Time Axis
+        if self.taxis is not None:
+            info_lines.append(f"Time Axis (taxis): Length={self.taxis.shape[0]}")
+            if self.taxis.size > 0:
+                if self.taxis.size < 10:
+                    info_lines.append(f"  Values (first 10): {self.taxis[:10]}...")
+                else:
+                    info_lines.append(f"  Values (first 10): {self.taxis[:10]}...")
+        else:
+            info_lines.append("Time Axis (taxis): Not set")
+
+        # X Axis
+        if self.xaxis is not None:
+            info_lines.append(f"X Axis (xaxis): Length={self.xaxis.shape[0]}")
+            if self.xaxis.size > 0:
+                if self.xaxis.size < 10:
+                    info_lines.append(f"  Values (first 10): {self.xaxis[:10]}...")
+                else:
+                    info_lines.append(f"  Values (first 10): {self.xaxis[:10]}...")
+        else:
+            info_lines.append("X Axis (xaxis): Not set")
+
+        # Y Axis
+        if self.yaxis is not None:
+            info_lines.append(f"Y Axis (yaxis): Length={self.yaxis.shape[0]}")
+            if self.yaxis.size > 0:
+                if self.yaxis.size < 10:
+                    info_lines.append(f"  Values (first 10): {self.yaxis[:10]}...")
+                else:
+                    info_lines.append(f"  Values (first 10): {self.yaxis[:10]}...")
+        else:
+            info_lines.append("Y Axis (yaxis): Not set")
+
+        info_lines.append(f"History contains {len(self.history.records)} records.")
+        info_lines.append("----------------------------------------------------")
+        return "\n".join(info_lines)
+
+    def print_info(self) -> None:
+        """Prints a summary of the Data3D object's attributes."""
+        print(self.get_info_str())
+
+    def __str__(self) -> str:
+        """Return the summary string of the Data3D object."""
+        return self.get_info_str()

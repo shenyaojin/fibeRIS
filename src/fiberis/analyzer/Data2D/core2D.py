@@ -285,45 +285,56 @@ class Data2D:
         )
         self.history.add_record(f"Data successfully saved to {filename}.", level="INFO")
 
-    def print_info(self) -> None:
+    def get_info_str(self) -> str:
         """
-        Print a summary of the Data2D object's attributes.
-        For array attributes (taxis, daxis), it prints up to the first 10 elements.
+        Get a summary string of the Data2D object's attributes.
+        For array attributes (taxis, daxis), it shows up to the first 10 elements.
         """
-        print(f"--- Data2D Object Summary: {self.name or 'Unnamed'} ---")
+        info_lines = [f"--- Data2D Object Summary: {self.name or 'Unnamed'} ---"]
 
-        print(f"Name: {self.name if self.name else 'Not set'}")
-        print(f"Start Time: {self.start_time.isoformat() if self.start_time else 'Not set'}")
+        info_lines.append(f"Name: {self.name if self.name else 'Not set'}")
+        info_lines.append(f"Start Time: {self.start_time.isoformat() if self.start_time else 'Not set'}")
 
         if self.data is not None:
-            print(f"Data Shape: {self.data.shape}")
+            info_lines.append(f"Data Shape: {self.data.shape}")
         else:
-            print("Data: Not set")
+            info_lines.append("Data: Not set")
 
         # Time Axis
         if self.taxis is not None:
-            print(f"Time Axis (taxis): Length={self.taxis.shape[0]}")
+            info_lines.append(f"Time Axis (taxis): Length={self.taxis.shape[0]}")
             if self.taxis.size > 0:
                 if self.taxis.size < 10:
-                    print(f"  Values: {self.taxis}")
+                    info_lines.append(f"  Values: {self.taxis}")
                 else:
-                    print(f"  Values (first 10): {self.taxis[:10]}...")
+                    info_lines.append(f"  Values (first 10): {self.taxis[:10]}...")
         else:
-            print("Time Axis (taxis): Not set")
+            info_lines.append("Time Axis (taxis): Not set")
 
         # Depth Axis
         if self.daxis is not None:
-            print(f"Depth Axis (daxis): Length={self.daxis.shape[0]}")
+            info_lines.append(f"Depth Axis (daxis): Length={self.daxis.shape[0]}")
             if self.daxis.size > 0:
                 if self.daxis.size < 10:
-                    print(f"  Values: {self.daxis}")
+                    info_lines.append(f"  Values: {self.daxis}")
                 else:
-                    print(f"  Values (first 10): {self.daxis[:10]}...")
+                    info_lines.append(f"  Values (first 10): {self.daxis[:10]}...")
         else:
-            print("Depth Axis (daxis): Not set")
+            info_lines.append("Depth Axis (daxis): Not set")
 
-        print(f"History contains {len(self.history.records)} records.")
-        print("----------------------------------------------------")
+        info_lines.append(f"History contains {len(self.history.records)} records.")
+        info_lines.append("----------------------------------------------------")
+        return "\n".join(info_lines)
+
+    def print_info(self) -> None:
+        """
+        Print a summary of the Data2D object's attributes.
+        """
+        print(self.get_info_str())
+
+    def __str__(self) -> str:
+        """Return the summary string of the Data2D object."""
+        return self.get_info_str()
 
 
     # --- Data Manipulation Methods ---
@@ -870,3 +881,51 @@ class Data2D:
         self.history.add_record(f"Retrieved data for depth nearest to {depth} (actual: {self.daxis[depth_idx]}).",
                                 level="INFO")
         return self.data[depth_idx, :]
+
+    def get_value_by_time(self, time_point: Union[datetime.datetime, float, int]) -> Tuple[np.ndarray, float]:
+        """
+        Get the 1D depth trace data for the timestamp nearest to the specified time point.
+
+        Args:
+            time_point (Union[datetime.datetime, float, int]): The target time.
+                If float/int, interpreted as seconds relative to current start_time.
+                If datetime.datetime, it's an absolute time.
+
+        Returns:
+            Tuple[np.ndarray, float]: A tuple containing:
+                - The 1D array of data for the selected time step.
+                - The closest time value found in the taxis (in seconds).
+
+        Raises:
+            ValueError: If taxis, data, or start_time (for datetime input) is not set.
+            TypeError: If time_point is not a supported type.
+        """
+        if self.taxis is None or self.data is None:
+            raise ValueError("taxis and data must be set.")
+        if self.taxis.size == 0:
+            raise ValueError("Cannot get value by time, taxis is empty.")
+
+        target_seconds: float
+        if isinstance(time_point, (int, float)):
+            target_seconds = float(time_point)
+        elif isinstance(time_point, datetime.datetime):
+            if self.start_time is None:
+                raise ValueError("start_time must be set to use a datetime object as input.")
+            target_seconds = (time_point - self.start_time).total_seconds()
+        else:
+            raise TypeError(f"Unsupported type for time_point: {type(time_point)}")
+
+        if not (self.taxis.min() <= target_seconds <= self.taxis.max()):
+            self.history.add_record(
+                f"Warning: Requested time {target_seconds:.2f}s is outside the taxis range "
+                f"[{self.taxis.min():.2f}s, {self.taxis.max():.2f}s]. Finding nearest endpoint.",
+                level="WARNING")
+
+        time_idx = np.argmin(np.abs(self.taxis - target_seconds))
+        closest_time_val = self.taxis[time_idx]
+
+        self.history.add_record(
+            f"Retrieved data for time nearest to {target_seconds:.2f}s (actual: {closest_time_val:.2f}s).",
+            level="INFO")
+
+        return self.data[:, time_idx], float(closest_time_val)

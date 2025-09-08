@@ -73,4 +73,68 @@ class DataG3D():
          md = np.insert(np.cumsum(step_distances), 0, 0.0)
          return md
 
+     def get_info_str(self) -> str:
+        """
+        Get a summary string of the DataG3D object's attributes.
+        For array attributes, it shows up to the first 10 elements.
+        """
+        info_lines = [f"--- DataG3D Object Summary: {self.name or 'Unnamed'} ---"]
+
+        info_lines.append(f"Name: {self.name if self.name else 'Not set'}")
+
+        if self.data is not None:
+            info_lines.append(f"Data (MD): Length={self.data.shape[0]}")
+            if self.data.size > 0:
+                if self.data.size < 10:
+                    info_lines.append(f"  Values (first 10): {self.data[:10]}...")
+                else:
+                    info_lines.append(f"  Values (first 10): {self.data[:10]}...")
+        else:
+            info_lines.append("Data (MD): Not set")
+
+        # X Axis
+        if self.xaxis is not None:
+            info_lines.append(f"X Axis (xaxis): Length={self.xaxis.shape[0]}")
+            if self.xaxis.size > 0:
+                if self.xaxis.size < 10:
+                    info_lines.append(f"  Values (first 10): {self.xaxis[:10]}...")
+                else:
+                    info_lines.append(f"  Values (first 10): {self.xaxis[:10]}...")
+        else:
+            info_lines.append("X Axis (xaxis): Not set")
+
+        # Y Axis
+        if self.yaxis is not None:
+            info_lines.append(f"Y Axis (yaxis): Length={self.yaxis.shape[0]}")
+            if self.yaxis.size > 0:
+                if self.yaxis.size < 10:
+                    info_lines.append(f"  Values (first 10): {self.yaxis[:10]}...")
+                else:
+                    info_lines.append(f"  Values (first 10): {self.yaxis[:10]}...")
+        else:
+            info_lines.append("Y Axis (yaxis): Not set")
+
+        # Z Axis
+        if self.zaxis is not None:
+            info_lines.append(f"Z Axis (zaxis): Length={self.zaxis.shape[0]}")
+            if self.zaxis.size > 0:
+                if self.zaxis.size < 10:
+                    info_lines.append(f"  Values (first 10): {self.zaxis[:10]}...")
+                else:
+                    info_lines.append(f"  Values (first 10): {self.zaxis[:10]}...")
+        else:
+            info_lines.append("Z Axis (zaxis): Not set")
+
+        info_lines.append(f"History contains {len(self.history.records)} records.")
+        info_lines.append("----------------------------------------------------")
+        return "\n".join(info_lines)
+
+     def print_info(self) -> None:
+        """Prints a summary of the DataG3D object's attributes."""
+        print(self.get_info_str())
+
+     def __str__(self) -> str:
+        """Return the summary string of the DataG3D object."""
+        return self.get_info_str()
+
      # Add plot functions here in the future. Not urgent.

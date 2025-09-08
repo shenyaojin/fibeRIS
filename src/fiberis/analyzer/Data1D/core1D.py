@@ -436,40 +436,51 @@ class Data1D:
         self.history.add_record(f"Plot generated for '{self.name if self.name else 'Unnamed Data1D'}'.", level="INFO")
         return lines
 
-    def print_info(self) -> None:
+    def get_info_str(self) -> str:
         """
-        Print a summary of the Data1D object's attributes.
-        For array attributes (taxis, data), it prints up to the first 10 elements.
+        Get a summary string of the Data1D object's attributes.
+        For array attributes (taxis, data), it shows up to the first 10 elements.
         """
-        print(f"--- Data1D Object Summary: {self.name or 'Unnamed'} ---")
+        info_lines = [f"--- Data1D Object Summary: {self.name or 'Unnamed'} ---"]
 
-        print(f"Name: {self.name if self.name else 'Not set'}")
-        print(f"Start Time: {self.start_time.isoformat() if self.start_time else 'Not set'}")
+        info_lines.append(f"Name: {self.name if self.name else 'Not set'}")
+        info_lines.append(f"Start Time: {self.start_time.isoformat() if self.start_time else 'Not set'}")
 
         # Data
         if self.data is not None:
-            print(f"Data: Length={self.data.shape[0]}")
+            info_lines.append(f"Data: Length={self.data.shape[0]}")
             if self.data.size > 0:
                 if self.data.size < 10:
-                    print(f"  Values: {self.data}")
+                    info_lines.append(f"  Values: {self.data}")
                 else:
-                    print(f"  Values (first 10): {self.data[:10]}...")
+                    info_lines.append(f"  Values (first 10): {self.data[:10]}...")
         else:
-            print("Data: Not set")
+            info_lines.append("Data: Not set")
 
         # Time Axis
         if self.taxis is not None:
-            print(f"Time Axis (taxis): Length={self.taxis.shape[0]}")
+            info_lines.append(f"Time Axis (taxis): Length={self.taxis.shape[0]}")
             if self.taxis.size > 0:
                 if self.taxis.size < 10:
-                    print(f"  Values: {self.taxis}")
+                    info_lines.append(f"  Values: {self.taxis}")
                 else:
-                    print(f"  Values (first 10): {self.taxis[:10]}...")
+                    info_lines.append(f"  Values (first 10): {self.taxis[:10]}...")
         else:
-            print("Time Axis (taxis): Not set")
+            info_lines.append("Time Axis (taxis): Not set")
 
-        print(f"History contains {len(self.history.records)} records.")
-        print("----------------------------------------------------")
+        info_lines.append(f"History contains {len(self.history.records)} records.")
+        info_lines.append("----------------------------------------------------")
+        return "\n".join(info_lines)
+
+    def print_info(self) -> None:
+        """
+        Print a summary of the Data1D object's attributes.
+        """
+        print(self.get_info_str())
+
+    def __str__(self) -> str:
+        """Return the summary string of the Data1D object."""
+        return self.get_info_str()
 
     def right_merge(self, other_data: 'Data1D') -> None:
         """
