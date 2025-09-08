@@ -42,6 +42,9 @@ class MarinerDSS2D(core.DataIO):
         :param args: additional arguments. I don't use it now.
         :return:
         """
+        # Rotate the data if needed, for future reading DSS
+        if self.data.shape[0] != len(self.daxis) or self.data.shape[1] != len(self.taxis):
+            self.data = self.data.T
 
         np.savez(filename, data=self.data, taxis=self.taxis, daxis=self.daxis, start_time=self.start_time)
 
