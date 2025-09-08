@@ -224,9 +224,11 @@ class Data2D:
             raise ValueError(
                 f"Loaded data depth dimension ({loaded_data.shape[0]}) mismatch with daxis length ({loaded_daxis.shape[0]}).")
 
-        self.data = loaded_data
-        self.taxis = loaded_taxis
-        self.daxis = loaded_daxis
+        # Force convert to float for compatibility
+        self.data = loaded_data.astype(float)
+        self.taxis = loaded_taxis.astype(float)
+        self.daxis = loaded_daxis.astype(float)
+        self.history.add_record("Converted data, taxis, and daxis to float type.", level="INFO")
 
         # Handle start_time
         if isinstance(start_time_raw, np.ndarray) and start_time_raw.size == 1:

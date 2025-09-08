@@ -74,9 +74,10 @@ class Data1D:
                 if 'start_time' not in data_structure:
                     raise KeyError("'start_time' key is missing from the NPZ file.")
 
-                self.data = data_structure['data']
-                self.taxis = data_structure['taxis']
+                self.data = data_structure['data'].astype(float)
+                self.taxis = data_structure['taxis'].astype(float)
                 start_time_raw = data_structure['start_time'].item() # .item() extracts the scalar value
+                self.history.add_record("Converted data and taxis to float type.", level="INFO")
 
                 if isinstance(start_time_raw, str):
                     self.start_time = datetime.datetime.fromisoformat(start_time_raw)
