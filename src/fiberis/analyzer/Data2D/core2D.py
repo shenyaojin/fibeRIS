@@ -929,3 +929,15 @@ class Data2D:
             level="INFO")
 
         return self.data[:, time_idx], float(closest_time_val)
+
+    def get_max_daxis(self) -> Optional[float]:
+        """Returns the maximum value of the depth axis (daxis)."""
+        if self.daxis is None or self.daxis.size == 0:
+            return None
+        return float(self.daxis[-1])
+
+    def get_max_taxis(self) -> Optional[float]:
+        """Returns the maximum value of the time axis (taxis) in seconds."""
+        if self.taxis is None or self.taxis.size == 0:
+            return None
+        return float(self.taxis[-1])
