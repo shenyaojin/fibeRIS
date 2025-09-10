@@ -34,12 +34,12 @@ class MarinerDSS2D(core.DataIO):
         # Convert the start time into datetime object
         self.start_time = datetime.datetime.strptime(start_time.decode('utf-8'), '%m/%d/%Y %H:%M:%S.%f')
 
-    def write(self, filename, *args) -> None:
+    def write(self, filename, **kwargs) -> None:
         """
         Write the reader object to a npz file, which can be read by fiberis.
 
         :param filename: the filename to save the npz file.
-        :param args: additional arguments. I don't use it now.
+        :param kwargs: additional arguments. I don't use it now.
         :return:
         """
         # Rotate the data if needed, for future reading DSS
@@ -48,9 +48,9 @@ class MarinerDSS2D(core.DataIO):
 
         np.savez(filename, data=self.data, taxis=self.taxis, daxis=self.daxis, start_time=self.start_time)
 
-    def to_analyzer(self, **kwargs) -> Data2D_XT_DSS:
+    def to_analyzer(self, **kwargs) -> Data2D_XT_DSS.DSS2D:
         """
-        Convert the reader object to a Data2D_XT_DSS object for analysis.
+        Convert the reader object to a Data2D_XT_DSS.DSS2D object for analysis.
 
         :return: Data2D_XT_DSS object.
         """
