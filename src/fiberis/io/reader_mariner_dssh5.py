@@ -40,7 +40,7 @@ class MarinerDSS2D(core.DataIO):
 
         :param filename: the filename to save the npz file.
         :param kwargs: additional arguments. I don't use it now.
-        :return:
+        :return: None
         """
         # Rotate the data if needed, for future reading DSS
         if self.data.shape[0] != len(self.daxis) or self.data.shape[1] != len(self.taxis):
@@ -54,6 +54,10 @@ class MarinerDSS2D(core.DataIO):
 
         :return: Data2D_XT_DSS object.
         """
+
+        # Rotate the data if needed, for future reading DSS
+        if self.data.shape[0] != len(self.daxis) or self.data.shape[1] != len(self.taxis):
+            self.data = self.data.T
 
         analyzer = Data2D_XT_DSS.DSS2D()
         analyzer.set_data(self.data)
