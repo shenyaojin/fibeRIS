@@ -218,28 +218,45 @@ class Data1D:
             f"Time shifted by {shift_delta.total_seconds():.3f} seconds. New start_time: {self.start_time.isoformat()}",
             level="INFO")
 
-    def get_value_by_time(self, time_sec: float) -> float:
+    def get_value_by_time(self, time_point: Union[datetime.datetime, float, int]) -> float:
         """
         Get the interpolated data value at a specific time point.
-        Time is relative to the current start_time (i.e., corresponds to a value in self.taxis).
+        Time can be an absolute datetime or relative to the current start_time.
 
         Args:
-            time_sec (float): The time in seconds (relative to self.start_time) at which to get the data value.
+            time_point (Union[datetime.datetime, float, int]):
+                The time at which to get the data value.
+                If float/int, interpreted as seconds relative to self.start_time.
+                If datetime.datetime, it's an absolute time.
 
         Returns:
             float: The interpolated data value at the specified time.
 
         Raises:
-            ValueError: If data or taxis is not loaded or is empty.
+            ValueError: If data or taxis is not loaded or is empty, or if start_time is not set for datetime input.
+            TypeError: If time_point has an invalid type.
 
         Note:
             If performance is an issue for many calls, consider cropping the data first.
-            This method uses linear interpolation. `np.interp` extrapolates if time_sec is outside taxis range.
+            This method uses linear interpolation. `np.interp` extrapolates if time_point is outside taxis range.
         """
         if self.data is None or self.taxis is None or self.data.size == 0 or self.taxis.size == 0:
-            self.history.add_record(f"Error: Cannot get value at {time_sec}s, data/taxis is not loaded or empty.",
+            self.history.add_record(f"Error: Cannot get value at {time_point}, data/taxis is not loaded or empty.",
                                     level="ERROR")
             raise ValueError("Data or taxis is not loaded or is empty.")
+
+        time_sec: float
+        if isinstance(time_point, (int, float)):
+            time_sec = float(time_point)
+        elif isinstance(time_point, datetime.datetime):
+            if self.start_time is None:
+                self.history.add_record("Error: Cannot get value by datetime, start_time is not set.", level="ERROR")
+                raise ValueError("start_time is not set when using a datetime object for time_point.")
+            time_sec = (time_point - self.start_time).total_seconds()
+        else:
+            self.history.add_record(f"Error: Invalid type for time_point ({type(time_point)})", level="ERROR")
+            raise TypeError("time_point must be either datetime.datetime or float/int (seconds).")
+
         if self.taxis.size == 1:  # Single point data
             if np.isclose(time_sec, self.taxis[0]):
                 return float(self.data[0])
@@ -727,12 +744,14 @@ class Data1D:
             level="INFO"
         )
 
-    def savez(self, filename: str) -> None:
+    def savez(self, filename: Optional[str] = None) -> None:
         """
         Save the current data, taxis, and start_time to an .npz file.
 
         Args:
-            filename (str): The path to the .npz file where data will be saved.
+            filename (Optional[str]): The path to the .npz file where data will be saved.
+                                      If not provided, `self.name` will be used.
+                                      If `self.name` is also not set, it defaults to 'untitled.npz'.
 
         Raises:
             ValueError: If data or taxis is not loaded or empty.
@@ -741,5 +760,18 @@ class Data1D:
             self.history.add_record("Error: Cannot save, data or taxis is not loaded or is empty.", level="ERROR")
             raise ValueError("Data or taxis is not loaded or is empty.")
 
-        np.savez(filename, data=self.data, taxis=self.taxis, start_time=self.start_time.isoformat())
-        self.history.add_record(f"Data saved to {filename}.", level="INFO")
+        save_filename: str
+        if filename:
+            save_filename = filename
+        elif self.name:
+            save_filename = self.name
+        else:
+            save_filename = "untitled"
+
+        # Ensure the filename ends with .npz
+        if not save_filename.lower().endswith('.npz'):
+            save_filename += '.npz'
+
+        np.savez(save_filename, data=self.data, taxis=self.taxis, start_time=self.start_time.isoformat())
+        self.history.add_record(f"Data saved to {save_filename}.", level="INFO")
+
