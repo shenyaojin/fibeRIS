@@ -238,14 +238,6 @@ class ModelBuilder:
         self._add_generic_mesh_generator(f"create_{new_boundary_name}", "SideSetBoundingBoxGenerator", params)
         return self
 
-    def add_global_params(self, params: Dict[str, Any]) -> 'ModelBuilder':
-        """Adds a [GlobalParams] block to the input file."""
-        gp_block = self._get_or_create_toplevel_moose_block("GlobalParams")
-        for p_name, p_val in params.items():
-            gp_block.add_param(p_name, p_val)
-        print("Info: Added [GlobalParams] block.")
-        return self
-
     def set_matrix_config(self, config: 'MatrixConfig') -> 'ModelBuilder':
         """
         Set the matrix configuration for the reservoir.
