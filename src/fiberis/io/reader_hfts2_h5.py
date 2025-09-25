@@ -1,5 +1,5 @@
 # Utils for reading HFTS2 data from h5 files
-# Shenyao Jin, adopted from Peiyao Li, Ge Jin's codes
+# Shenyao Jin, adopted from Peiyao and Dr.Jin's codes
 
 import numpy as np
 from glob import glob
@@ -109,8 +109,29 @@ class HFTS2DAS2D(core.DataIO):
 
         print("Finished reading and merging all files.")
 
-    def write(self, filename, *args):
-        pass
+    def write(self,
+              filename: Optional[str] = "Untitled.npz",
+              *args) -> None:
+        """
+        Write `.npz` file for further analysis.
+
+        :param filename: The path to save the .npz file.
+        :param args: Additional arguments if needed.
+        :return: None
+        """
+        if self.temp_dssobject.data is None:
+            self.record_log("Write operation failed: No data to write.", level="WARNING")
+            return
+
+        np.savez(
+            filename,
+            data=self.temp_dssobject.data,
+            daxis=self.temp_dssobject.daxis,
+            taxis=self.temp_dssobject.taxis,
+            start_time=self.temp_dssobject.start_time,
+            name = self.temp_dssobject.name
+        )
+
 
     def to_analyzer(self, **kwargs) -> DSS2D:
         """
