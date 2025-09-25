@@ -1,7 +1,7 @@
 # src/fiberis/moose/study.py
 # This module provides high-level tools for sensitivity analysis and optimization using MOOSE.
 # Shenyao Jin, shenyaojin@mines.edu, 2025-08-10
-# Not tested.
+# ABANDONED: Use fiberis.moose.optimizer instead.
 import os
 import shutil
 import numpy as np
