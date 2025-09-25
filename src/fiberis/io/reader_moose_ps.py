@@ -11,6 +11,7 @@ import datetime
 import numpy as np
 from fiberis.io import core
 from typing import Optional
+from fiberis.analyzer.Data1D.Data1D_MOOSEps import Data1D_MOOSEps
 
 class MOOSEPointSamplerReader(core.DataIO):
     """
@@ -164,3 +165,24 @@ class MOOSEPointSamplerReader(core.DataIO):
             msg = f"Failed to read or process CSV file at '{csv_path}'. Error: {e}"
             self.record_log(msg, level="ERROR")
             raise ValueError(msg) from e
+
+
+    def to_analyzer(self):
+        """
+        Convert the loaded data to a Data1DMOOSEps analyzer object.
+
+        Returns:
+            Data1DMOOSEps: An analyzer object containing the loaded data.
+        """
+        if self.data is None or self.taxis is None or self.start_time is None or self.variable_name is None:
+            raise ValueError("Data is not fully loaded. Please call read() before converting to analyzer.")
+
+        analyzer = Data1D_MOOSEps()
+        analyzer.data = self.data
+        analyzer.taxis = self.taxis
+        analyzer.start_time = self.start_time
+        analyzer.name = self.variable_name
+        analyzer.history.add_record(f"Converted from MOOSEPointSamplerReader on {datetime.datetime.now().isoformat()}", level="INFO")
+
+        self.record_log(f"Converted data to Data1DMOOSEps analyzer with variable '{self.variable_name}'.", level="INFO")
+        return analyzer

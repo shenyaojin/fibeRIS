@@ -1,7 +1,10 @@
 # This file contains the core class for data input/output.
 # Read data from different types of file(s).
+# For large data, it is better to separate the time axis and depth axis to read in. But for save data, should not specify the range.
+# The .npz file is recommended for large data, I recommend smaller than 16GB for a single file.
+# If the data is larger than 16GB, please split it into multiple files and use `right_merge` function to merge them in analyzer.
 # Write data npz(or csv) to make it faster to read.
-# Refactored to use InfoManagementSystem for logging.
+# Shenyao Jin, shenyaojin@mines.edu
 
 import datetime
 from abc import abstractmethod, ABC
@@ -13,14 +16,21 @@ class DataIO(ABC):
     # constructor
     def __init__(self):
         """
-        Initialize the dataio object.
+        Initialize the dataio object. It includes all the common attributes, for the subclasses to inherit.
         """
         self.daxis = None
         self.taxis = None
         self.data = None
         self.start_time = None
         self.filename = None
-        # Replace the simple list-based history with the InfoManagementSystem
+
+        # For 3D data and 3D geometry handling
+        self.xaxis = None
+        self.yaxis = None
+        self.zaxis = None
+
+        # Replace the simple list-based history with the InfoManagementSystem.
+        # History attributes
         self.log_system = InfoManagementSystem()
 
     @abstractmethod
@@ -46,6 +56,18 @@ class DataIO(ABC):
             The path to the file to write the data.
         data : numpy.ndarray
             The data to write.
+        """
+        pass
+
+    @abstractmethod
+    def to_analyzer(self):
+        """
+        Convert the data to an analyzer object for further analysis.
+
+        Returns:
+        -------
+        analyzer : Analyzer
+            The analyzer object.
         """
         pass
 

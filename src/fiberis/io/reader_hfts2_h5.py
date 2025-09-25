@@ -114,7 +114,14 @@ class HFTS2DAS2D(core.DataIO):
 
     def to_analyzer(self, **kwargs) -> DSS2D:
         """
-        Convert the reader object to a Data2D_XT_DSS.DSS2D object for analysis.
+        Returns the merged DSS2D object created during the read process.
 
-        :return: Data2D_XT_DSS object.
+        :return: DSS2D object ready for analysis.
         """
+        if self.temp_dssobject.data is None:
+            self.record_log("Analyzer conversion failed: Data has not been read or is empty.", level="WARNING")
+            # Return an empty object instead of None to maintain type consistency
+            return DSS2D()
+            
+        self.record_log("DSS2D object is ready for analysis.", level="INFO")
+        return self.temp_dssobject
