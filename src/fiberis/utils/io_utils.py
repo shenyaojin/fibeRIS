@@ -1,15 +1,17 @@
 # Toolkit reading files. Might be useful for other projects so I put it here.
 import h5py
-
+import numpy as np
+from typing import Optional
 # Dictionary of possible HDF5 keys for DAS data components.
 # The function will iterate through these keys to find the correct ones.
 
 
 
 # Modified from Jin's OptaSense DAS processing code.
-def read_h5(filename):
+def read_h5(filename: str):
     """
-    Reads data, axes, and metadata from an HDF5 file by searching for a set of possible keys.
+    Reads data, axes, and metadata from an HDF5 file by searching for a set of possible keys. Only use it to load
+    DAS data. For other type of h5 file, I'm finding ways to load it. -- Shenyao
 
     Parameters:
     filename (str): Path to the HDF5 file.
@@ -67,3 +69,63 @@ def read_h5(filename):
                 continue
 
     return data, daxis, taxis, start_time
+
+
+def load_hfts2_depthtable(filename: str) -> np.ndarray:
+    """
+    Reads a HFTS2 DAS depth table from a .csvh file.
+
+    Parameters:
+    filename (str): Path to the .csvh file.
+
+    Returns:
+    numpy.ndarray: A 1D array of depth values.
+    """
+    depths = []
+    in_data_section = False
+    data_header_lines_to_skip = 2
+
+    with open(filename, 'r') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+
+            if line.startswith('~DATA'):
+                in_data_section = True
+                continue
+
+            if in_data_section:
+                if data_header_lines_to_skip > 0:
+                    data_header_lines_to_skip -= 1
+                    continue
+
+                parts = line.split(',')
+                if len(parts) >= 2:
+                    try:
+                        # The value is in the second column, e.g., "1,-317.911398"
+                        depth_val_str = parts[1].strip()
+                        depths.append(float(depth_val_str))
+                    except (ValueError, IndexError):
+                        print(f"Could not parse depth value from line: '{line}'. Skipping.")
+                        continue
+
+    return np.array(depths)
+
+def load_h5_by_group_name(filepath: str, group_name: str) -> np.ndarray:
+    """
+    Load the h5 file using group name as a key value. Used for those pumping curve files (Why not use csv...?) OR other
+    h5 files I did not design a I/O
+    --Shenyao
+
+    :param filepath: the filepath of the h5 file
+    :param group_name: the key value, looks like 'Acquisition/Raw[0]/RawData'.
+    :return: the np.array of the loaded data
+    """
+    with h5py.File(filepath, 'r') as file:
+        try:
+            data = file[group_name][:]
+            return data
+        except KeyError:
+            print(f"Group '{group_name}' not found in file '{filepath}'. Returning an empty array.")
+            return np.array([])

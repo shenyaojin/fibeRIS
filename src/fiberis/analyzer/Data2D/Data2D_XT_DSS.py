@@ -2,6 +2,7 @@
 # Shenyao Jin, shenyaojin@Mines.edu, 02/2025
 from fiberis.analyzer.Data2D import core2D
 import matplotlib.pyplot as plt
+from typing import Optional, Union, List, Tuple
 
 class DSS2D(core2D.Data2D):
 
@@ -38,3 +39,26 @@ class DSS2D(core2D.Data2D):
         plt.xlabel(xlabel)
         plt.ylabel(ylabel)
         plt.show()
+
+    def downsampling(self, factor_t=2, factor_d=2) -> None:
+        """
+        Downsample the data by a specified factor in time and depth dimensions.
+
+        Parameters:
+        ----------
+        factor_t : int, optional
+            The downsampling factor for the time axis. Default is 2.
+        factor_d : int, optional
+            The downsampling factor for the depth axis. Default is 2.
+
+        Usage:
+        ------
+        >>> instance = DSS2D()
+        >>> instance.downsampling(factor_t=4, factor_d=4)
+        """
+        self.data = self.data[::factor_d, ::factor_t]
+        self.taxis = self.taxis[::factor_t]
+        self.daxis = self.daxis[::factor_d]
+
+        self.history.add_record("Downsampled data by factor_t={} and factor_d={}".format(factor_t, factor_d))
+
