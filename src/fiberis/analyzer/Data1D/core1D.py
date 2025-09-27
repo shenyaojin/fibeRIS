@@ -334,6 +334,38 @@ class Data1D:
         self.history.add_record(f"Renamed data from '{old_name if old_name else 'Unnamed'}' to '{self.name}'.",
                                 level="INFO")
 
+    def down_sample(self, factor: int) -> None:
+        """
+        Down sample the data by an integer factor. Modifies data and taxis in place.
+
+        :param factor: the down sampling factor, must be an integer greater than 1
+        :return: None
+        """
+
+        if not isinstance(factor, int) or factor < 1:
+            self.history.add_record(f"Error: Down sampling factor must be an integer greater than 0, got {factor}.",
+                                    level="ERROR")
+            raise ValueError("Down sampling factor must be an integer greater than 0.")
+
+        if self.data is None or self.taxis is None:
+            self.history.add_record("Error: Cannot down sample, data or taxis is not loaded.", level="ERROR")
+            raise ValueError("Data or taxis is not loaded. Load data first.")
+
+        if self.data.size == 0 or self.taxis.size == 0:
+            self.history.add_record("Warning: Down sampling empty data/taxis.", level="WARNING")
+            return
+
+        if self.data.size != self.taxis.size:
+            self.history.add_record("Error: Data and taxis size mismatch, cannot down sample.", level="ERROR")
+            raise ValueError("Data and taxis must have the same length to down sample.")
+        if factor == 1:
+            self.history.add_record("Down sampling factor is 1, no changes made.", level="INFO")
+            return
+
+        self.data = self.data[::factor]
+        self.taxis = self.taxis[::factor]
+        self.history.add_record(f"Down sampled data by a factor of {factor}. New length: {self.data.size}.", level="INFO")
+
     def get_end_time(self, use_timestamp: bool = False) -> Union[datetime.datetime, np.float64]:
 
         """

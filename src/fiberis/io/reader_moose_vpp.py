@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 from fiberis.io import core
 from typing import Optional
+from fiberis.analyzer.Data2D.core2D import Data2D
 
 class MOOSEVectorPostProcessorReader(core.DataIO):
     """
@@ -205,3 +206,24 @@ class MOOSEVectorPostProcessorReader(core.DataIO):
             self.record_log(msg, level="ERROR")
             raise ValueError(msg) from e
 
+
+    def to_analyzer(self) -> Data2D:
+        """
+        Convert the loaded data to a Data2D object for analysis.
+
+        Returns:
+            Data2D: The Data2D object containing the loaded data.
+        """
+        if self.data is None or self.taxis is None or self.xaxis is None or self.yaxis is None:
+            raise ValueError("Data is not loaded. Please call read() before converting to analyzer.")
+
+        name = self.sampler_name + "_" + self.variable_name if self.variable_name else self.sampler_name
+        analyzer = Data2D(
+            data=self.data,
+            taxis=self.taxis,
+            daxis=self.daxis,
+            start_time=self.start_time,
+            name= name
+        )
+        analyzer.history.add_record(f"Data loaded from MOOSE VectorPostProcessor CSV files.", level="INFO")
+        return analyzer
