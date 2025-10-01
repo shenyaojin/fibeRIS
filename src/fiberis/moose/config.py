@@ -368,6 +368,38 @@ class TimeStepperFunctionConfig(Data1D):
         # Call the parent's __init__ method, mapping x/y to taxis/data
         super().__init__(name=name, taxis=np.array(x_values), data=np.array(y_values))
 
+    @classmethod
+    def load_timestep_from_data1d(cls, name: str, data1d_obj: Data1D) -> 'TimeStepperFunctionConfig':
+        """
+        Creates a TimeStepperFunctionConfig from a Data1D object.
+
+        The x_values are taken directly from the Data1D object's taxis.
+        The y_values (timesteps) are calculated as half the difference between consecutive taxis points.
+        The last y_value is duplicated to match the length of the x_values.
+
+        Args:
+            name (str): The name for the new TimeStepperFunctionConfig.
+            data1d_obj (Data1D): The Data1D object to process.
+
+        Returns:
+            TimeStepperFunctionConfig: A new instance configured with the derived timesteps.
+        
+        Raises:
+            ValueError: If the Data1D object has fewer than 2 time points.
+        """
+        if data1d_obj.taxis is None or len(data1d_obj.taxis) < 2:
+            raise ValueError("Cannot generate timesteps from Data1D object with fewer than 2 time points.")
+
+        x_values = data1d_obj.taxis
+        
+        # Calculate y_values as half the difference of taxis
+        dt_values = np.diff(x_values) / 2.0
+        
+        # Append the last element to make the arrays the same size
+        y_values = np.append(dt_values, dt_values[-1])
+        
+        return cls(name=name, x_values=x_values, y_values=y_values)
+
 
 @dataclass
 class AdaptiveTimeStepperConfig:
@@ -380,3 +412,53 @@ class AdaptiveTimeStepperConfig:
     # This list will contain all the "schedule" functions,
     # which are now instances of the new TimeStepperFunctionConfig class.
     functions: List[TimeStepperFunctionConfig]
+
+
+class TimeSequenceStepper:
+    """
+    Configuration for the TimeSequenceStepper in MOOSE.
+    This time stepper derives from TimeSequenceStepperBase and provides the sequence of time values from a user-specified list, given by "time_sequence".
+
+    See Failed solves for information on the behavior of this time stepper for failed time steps.
+
+    Example input syntax
+    In this example, the numerical problem is solved at four specified points in time using a TimeSequenceStepper.
+
+    [Executioner]
+      type = Transient
+      end_time = 4.0
+      [./TimeStepper]
+        type = TimeSequenceStepper
+        time_sequence = '0   0.85 1.3 2 4'
+      [../]
+    []
+    """
+    def __init__(self, time_sequence: Optional[Union[List[float], np.ndarray]] = None):
+        """
+        Initializes the TimeSequenceStepper.
+
+        Args:
+            time_sequence (Optional[Union[List[float], np.ndarray]]): A list or array of time points for the simulation. Can be provided later.
+        """
+        if time_sequence is not None:
+            if not isinstance(time_sequence, (list, np.ndarray)):
+                raise TypeError("time_sequence must be a list or numpy array.")
+            # MOOSE expects a space-separated string
+            self.time_sequence: str = ' '.join(map(str, time_sequence))
+        else:
+            self.time_sequence: str = '' # Initialize as empty string if not provided
+
+    @classmethod
+    def from_data1d(cls, data1d_obj: Data1D) -> 'TimeSequenceStepper':
+        """
+        Creates a TimeSequenceStepper from a Data1D object's time axis.
+
+        Args:
+            data1d_obj (Data1D): The Data1D object containing the time axis (taxis).
+
+        Returns:
+            TimeSequenceStepper: A new instance configured with the time sequence.
+        """
+        if data1d_obj.taxis is None or data1d_obj.taxis.size == 0:
+            raise ValueError("Data1D object must have a non-empty taxis to create a TimeSequenceStepper.")
+        return cls(time_sequence=data1d_obj.taxis)

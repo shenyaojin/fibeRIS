@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 # Import config classes and lower-level MooseBlock class from the user's original file.
 from fiberis.moose.config import HydraulicFractureConfig, SRVConfig, AdaptivityConfig, \
     PointValueSamplerConfig, LineValueSamplerConfig, PostprocessorConfigBase, \
-    SimpleFluidPropertiesConfig, MatrixConfig, AdaptiveTimeStepperConfig, PostprocessorConfig
+    SimpleFluidPropertiesConfig, MatrixConfig, AdaptiveTimeStepperConfig, TimeSequenceStepper, PostprocessorConfig
 from fiberis.moose.input_generator import MooseBlock
 from fiberis.analyzer.Data1D import core1D
 
@@ -1077,30 +1077,26 @@ class ModelBuilder:
     # --- Executioner, Preconditioning, and Outputs ---
 
     # Update the add_executioner_block method to handle adaptive stepper configuration
-    def add_executioner_block(
-                              self,
+    def add_executioner_block(self,
                               end_time: float,
-                              dt: float,
-                              # The time_stepper_type is now an optional argument.
-                              # If adaptive_stepper_config is provided, this will be overridden.
-                              time_stepper_type: Optional[str] = 'ConstantDT',
-                              adaptive_stepper_config: Optional[AdaptiveTimeStepperConfig] = None,
+                              time_stepper_type: str,
+                              dt: Optional[float] = None,
+                              stepper_config: Optional[Union[AdaptiveTimeStepperConfig, TimeSequenceStepper]] = None,
                               **kwargs) -> 'ModelBuilder':
         """
-        Adds a standard [Executioner] block. If an adaptive_stepper_config is provided,
-        it automatically configures the advanced IterationAdaptiveDT TimeStepper.
-        Otherwise, it defaults to a simpler TimeStepper (e.g., ConstantDT).
+        Adds a standard [Executioner] block with a configurable TimeStepper.
 
         Args:
-            end_time: The simulation end time.
-            dt: The initial or constant time step size.
-            time_stepper_type: The fallback TimeStepper type if no adaptive config is given.
-            adaptive_stepper_config: The configuration object for the adaptive stepper.
-            **kwargs: Additional parameters for the [Executioner] block.
+            end_time (float): The simulation end time.
+            time_stepper_type (str): The MOOSE type for the TimeStepper (e.g., 'Constant', 'IterationAdaptiveDT', 'TimeSequenceStepper').
+            dt (Optional[float]): The initial or constant time step size. Required for most steppers.
+            stepper_config (Optional[Union[AdaptiveTimeStepperConfig, TimeSequenceStepper]]):
+                A configuration object required for complex time steppers like 'IterationAdaptiveDT' or 'TimeSequenceStepper'.
+            **kwargs: Additional parameters for the [Executioner] block itself.
         """
         exec_block = self._get_or_create_toplevel_moose_block("Executioner")
 
-        # Set base executioner parameters (e.g., solver tolerances)
+        # Set base executioner parameters
         params = {
             "type": "Transient", "solve_type": "Newton", "end_time": end_time, "verbose": True,
             "l_tol": 1e-3, "l_max_its": 2000, "nl_max_its": 200, "nl_abs_tol": 1e-3, "nl_rel_tol": 1e-3,
@@ -1109,32 +1105,40 @@ class ModelBuilder:
         for p_name, p_val in params.items():
             exec_block.add_param(p_name, p_val)
 
-        # --- Core "intelligent" logic for selecting the TimeStepper ---
-        if adaptive_stepper_config:
-            # If the user provides the advanced configuration object...
-            print("Info: Configuring with IterationAdaptiveDT TimeStepper based on provided config.")
+        # --- TimeStepper Configuration ---
+        ts_block = MooseBlock("TimeStepper", block_type=time_stepper_type)
 
-            # 1. Automatically call the *existing* method to create all required functions.
-            #    This works because our new TimeStepperFunctionConfig is a subclass of Data1D.
-            for func_config in adaptive_stepper_config.functions:
+        if time_stepper_type == 'IterationAdaptiveDT':
+            if not isinstance(stepper_config, AdaptiveTimeStepperConfig):
+                raise TypeError("For 'IterationAdaptiveDT', stepper_config must be an AdaptiveTimeStepperConfig.")
+            if dt is None:
+                raise ValueError("'dt' (initial timestep) is required for IterationAdaptiveDT.")
+
+            print("Info: Configuring with IterationAdaptiveDT TimeStepper.")
+            for func_config in stepper_config.functions:
                 self.add_piecewise_function_from_data1d(name=func_config.name, source_data1d=func_config)
 
-            # 2. Extract all function names from the configuration.
-            function_names = [f.name for f in adaptive_stepper_config.functions]
-
-            # 3. Create the TimeStepper block with the correct type and parameters.
-            ts_block = MooseBlock("TimeStepper", block_type="IterationAdaptiveDT")
+            function_names = [f.name for f in stepper_config.functions]
             ts_block.add_param("dt", dt)
+            ts_block.add_param("force_step_every_function_point", True)
             ts_block.add_param("timestep_limiting_function", ' '.join(function_names))
-            exec_block.add_sub_block(ts_block)
+
+        elif time_stepper_type == 'TimeSequenceStepper':
+            if not isinstance(stepper_config, TimeSequenceStepper):
+                raise TypeError("For 'TimeSequenceStepper', stepper_config must be a TimeSequenceStepper.")
+
+            print("Info: Configuring with TimeSequenceStepper.")
+            # MOOSE input requires the string to be quoted
+            ts_block.add_param("time_sequence", f"'{stepper_config.time_sequence}'")
 
         else:
-            # If no advanced config is given, use a simple, robust TimeStepper to avoid errors.
-            print(f"Info: No adaptive config provided. Defaulting to simple '{time_stepper_type}' TimeStepper.")
-            ts_block = MooseBlock("TimeStepper", block_type=time_stepper_type)
+            # Handle simple time steppers like 'Constant'
+            if dt is None:
+                raise ValueError(f"'dt' is required for TimeStepper type '{time_stepper_type}'.")
+            print(f"Info: Configuring with simple '{time_stepper_type}' TimeStepper.")
             ts_block.add_param("dt", dt)
-            exec_block.add_sub_block(ts_block)
 
+        exec_block.add_sub_block(ts_block)
         print("Info: Added [Executioner] block.")
         return self
 
@@ -1403,7 +1407,7 @@ class ModelBuilder:
         ))
 
         # 12. Define Executioner, Preconditioning, and Outputs
-        builder.add_executioner_block(end_time=3600, dt=100)
+        builder.add_executioner_block(end_time=3600, time_stepper_type='ConstantDT', dt=100)
         builder.add_preconditioning_block(active_preconditioner='mumps')
         builder.add_outputs_block(exodus=True, csv=True)
 

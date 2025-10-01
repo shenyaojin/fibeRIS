@@ -807,3 +807,84 @@ class Data1D:
         np.savez(save_filename, data=self.data, taxis=self.taxis, start_time=self.start_time.isoformat())
         self.history.add_record(f"Data saved to {save_filename}.", level="INFO")
 
+    def adaptive_downsample(self, n_points: int) -> None:
+        """
+        Downsample the data to a specific number of points using a greedy breakpoint selection algorithm.
+        This method selects the most significant points to preserve the overall shape of the curve.
+        Modifies self.data and self.taxis in place. -- Shenyao
+
+        Args:
+            n_points (int): The target number of points for the downsampled data.
+
+        Raises:
+            ValueError: If data is not loaded, n_points is not a valid number, or there are too few points to sample.
+        """
+        if self.data is None or self.taxis is None or self.data.size == 0:
+            self.history.add_record("Error: Cannot perform adaptive downsampling, data is not loaded or is empty.", level="ERROR")
+            raise ValueError("Data or taxis is not loaded or is empty.")
+
+        if not isinstance(n_points, int) or n_points <= 2:
+            self.history.add_record(f"Error: n_points must be an integer greater than 2, but got {n_points}.", level="ERROR")
+            raise ValueError("Number of points (n_points) must be an integer greater than 2.")
+
+        current_n_points = self.data.size
+        if n_points >= current_n_points:
+            self.history.add_record(f"Warning: Target n_points ({n_points}) is >= current number of points ({current_n_points}). No downsampling performed.", level="WARNING")
+            return
+
+        # The indices of the points to keep, initialized with the start and end points
+        indices_to_keep = [0, current_n_points - 1]
+
+        for _ in range(n_points - 2):
+            max_dist = -1.0
+            best_index = -1
+
+            # Iterate through the current segments to find the point with the max distance
+            for i in range(len(indices_to_keep) - 1):
+                start_idx = indices_to_keep[i]
+                end_idx = indices_to_keep[i+1]
+
+                # If there are no points between the start and end of the segment, skip
+                if end_idx - start_idx <= 1:
+                    continue
+
+                # Coordinates of the segment endpoints
+                p1 = np.array([self.taxis[start_idx], self.data[start_idx]])
+                p2 = np.array([self.taxis[end_idx], self.data[end_idx]])
+
+                # Calculate perpendicular distance for all points in the segment
+                # Vector from p1 to p2
+                line_vec = p2 - p1
+                line_len_sq = np.dot(line_vec, line_vec)
+                if line_len_sq == 0: # Should not happen if taxis is monotonic
+                    continue
+
+                # Vectors from p1 to each point in the segment
+                points_indices = np.arange(start_idx + 1, end_idx)
+                points_vecs = np.vstack([self.taxis[points_indices], self.data[points_indices]]).T - p1
+
+                # Perpendicular distance formula using cross product magnitude
+                # |(p2-p1) x (p-p1)| / |p2-p1|
+                cross_product_mag = np.abs(np.cross(line_vec, points_vecs))
+                distances = cross_product_mag / np.sqrt(line_len_sq)
+
+                if distances.size > 0:
+                    local_max_dist = np.max(distances)
+                    if local_max_dist > max_dist:
+                        max_dist = local_max_dist
+                        best_index = points_indices[np.argmax(distances)]
+
+            if best_index != -1:
+                indices_to_keep.append(best_index)
+                indices_to_keep.sort()
+            else:
+                # No more points to add, break the loop
+                break
+
+        # Update data and taxis with the selected points
+        final_indices = np.array(sorted(indices_to_keep))
+        self.data = self.data[final_indices]
+        self.taxis = self.taxis[final_indices]
+
+        self.history.add_record(f"Adaptively downsampled data to {len(self.data)} points.", level="INFO")
+
