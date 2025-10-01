@@ -42,7 +42,8 @@ class MooseRunner:
             num_processors: int = 1,
             additional_args: Optional[List[str]] = None,
             moose_env_vars: Optional[Dict[str, str]] = None,
-            log_file_name: Optional[str] = "log.txt") -> Tuple[bool, str, str]:  # Added log_file_name
+            log_file_name: Optional[str] = "log.txt",
+            stream_output: bool = True) -> Tuple[bool, str, str]:
         """
         Runs a MOOSE simulation and optionally logs STDOUT.
 
@@ -58,6 +59,9 @@ class MooseRunner:
             log_file_name (Optional[str]): Name of the file to save the STDOUT log.
                                            If None, logging is skipped. Defaults to "log.txt".
                                            The log file is saved in the execution directory (cwd).
+            stream_output (bool): If True (default), streams MOOSE output to the console in real-time.
+                                  When streaming, stderr is merged into stdout.
+                                  If False, output is captured and returned after the process completes.
 
         Returns:
             Tuple[bool, str, str]: A tuple containing:
@@ -120,16 +124,38 @@ class MooseRunner:
             current_env.update(moose_env_vars)
 
         try:
-            process = subprocess.Popen(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                cwd=cwd,
-                env=current_env
-            )
-            stdout, stderr = process.communicate()
-            returncode = process.returncode
+            if stream_output:
+                print("Streaming MOOSE output in real-time...")
+                process = subprocess.Popen(
+                    command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    cwd=cwd,
+                    env=current_env,
+                    universal_newlines=True
+                )
+
+                stdout_lines = []
+                for line in process.stdout:
+                    print(line, end='')
+                    stdout_lines.append(line)
+
+                process.stdout.close()
+                returncode = process.wait()
+                stdout = "".join(stdout_lines)
+                stderr = ""  # Merged into stdout
+            else:
+                process = subprocess.Popen(
+                    command,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    cwd=cwd,
+                    env=current_env
+                )
+                stdout, stderr = process.communicate()
+                returncode = process.returncode
 
             self.last_run_stdout = stdout
             self.last_run_stderr = stderr
@@ -164,8 +190,9 @@ class MooseRunner:
                     f"MOOSE simulation failed for original input {original_input_file_abspath} (ran as {input_file_path_for_cmd} in {cwd}) with return code {returncode}.")
                 print("--- STDOUT ---")
                 print(stdout)
-                print("--- STDERR ---")
-                print(stderr)
+                if stderr:
+                    print("--- STDERR ---")
+                    print(stderr)
                 return False, stdout, stderr
 
         except FileNotFoundError as e:
