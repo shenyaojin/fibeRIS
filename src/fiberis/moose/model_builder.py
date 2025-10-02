@@ -678,7 +678,6 @@ class ModelBuilder:
         :param disp_y_variable: Name of the y-displacement variable (default: "disp_y").
         :return: self, allowing method chaining.
         """
-        # (Content from original file)
         bcs_main_block = self._get_or_create_toplevel_moose_block("BCs")
         bcs_main_block.sub_blocks.clear()
         self.add_boundary_condition(name="injection_pressure", bc_type="FunctionDirichletBC",
@@ -702,7 +701,6 @@ class ModelBuilder:
         :param params: Optional dictionary of parameters for the user object.
         :return: self, allowing method chaining.
         """
-        # (Content from original file)
         uo_main_block = self._get_or_create_toplevel_moose_block("UserObjects")
         uo_main_block.sub_blocks = [sb for sb in uo_main_block.sub_blocks if sb.block_name != name]
         uo_sub_block = MooseBlock(name, block_type=uo_type)
@@ -729,7 +727,6 @@ class ModelBuilder:
         :param other_params: Additional parameters for the PorousFlowDictator.
         :return: self, allowing method chaining.
         """
-        # (Content from original file)
         vars_str = ' '.join(porous_flow_variables) if isinstance(porous_flow_variables, list) else porous_flow_variables
         params = {"porous_flow_vars": vars_str, "number_fluid_phases": num_fluid_phases,
                   "number_fluid_components": num_fluid_components, **other_params}
@@ -795,7 +792,6 @@ class ModelBuilder:
         :param other_params: Optional additional parameters for the PiecewiseConstant function.
         :return: self, allowing method chaining.
         """
-        # (Content from original file)
         if not isinstance(source_data1d, core1D.Data1D):
             raise TypeError(f"source_data1d for function '{name}' must be a Data1D instance.")
         if source_data1d.taxis is None or source_data1d.data is None:
@@ -1088,7 +1084,7 @@ class ModelBuilder:
 
         Args:
             end_time (float): The simulation end time.
-            time_stepper_type (str): The MOOSE type for the TimeStepper (e.g., 'Constant', 'IterationAdaptiveDT', 'TimeSequenceStepper').
+            time_stepper_type (str): The MOOSE type for the TimeStepper (e.g., 'ConstantDT', 'IterationAdaptiveDT', 'TimeSequenceStepper').
             dt (Optional[float]): The initial or constant time step size. Required for most steppers.
             stepper_config (Optional[Union[AdaptiveTimeStepperConfig, TimeSequenceStepper]]):
                 A configuration object required for complex time steppers like 'IterationAdaptiveDT' or 'TimeSequenceStepper'.
@@ -1132,7 +1128,7 @@ class ModelBuilder:
             ts_block.add_param("time_sequence", f"'{stepper_config.time_sequence}'")
 
         else:
-            # Handle simple time steppers like 'Constant'
+            # Handle simple time steppers like 'ConstantDT'
             if dt is None:
                 raise ValueError(f"'dt' is required for TimeStepper type '{time_stepper_type}'.")
             print(f"Info: Configuring with simple '{time_stepper_type}' TimeStepper.")
@@ -1281,6 +1277,8 @@ class ModelBuilder:
         ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
         ax.set_aspect('auto', adjustable='box')
         plt.grid(True, linestyle='--', alpha=0.6)
+        # Invert y-axis for better visualization
+        ax.invert_yaxis()
         fig.tight_layout()
         plt.show()
 

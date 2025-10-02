@@ -72,33 +72,45 @@ class MooseRunner:
         if not os.path.exists(input_file_path):
             raise FileNotFoundError(f"Original input file not found: {input_file_path}")
 
+        # Read the input file content into memory before any directory operations.
+        try:
+            with open(input_file_path, 'r') as f:
+                input_file_content = f.read()
+        except IOError as e:
+            error_message = f"Fatal: Failed to read input file '{input_file_path}': {e}"
+            print(error_message)
+            return False, "", error_message
+
+        input_file_basename = os.path.basename(input_file_path)
         original_input_file_abspath = os.path.abspath(input_file_path)
-        input_file_basename = os.path.basename(original_input_file_abspath)
 
         if output_directory:
-            os.makedirs(output_directory, exist_ok=True)
+            # If an output directory is specified, prepare it.
             cwd = os.path.abspath(output_directory)
-            staged_input_file_path = os.path.join(cwd, input_file_basename)
-
-            # --- BUG FIX: Check if source and destination are the same file ---
-            if original_input_file_abspath != staged_input_file_path:
+            if os.path.exists(cwd):
+                print(f"Output directory '{cwd}' exists. Removing it to ensure a clean run.")
                 try:
-                    shutil.copy(original_input_file_abspath, staged_input_file_path)
-                    print(f"Staged input file '{input_file_basename}' in working directory '{cwd}'")
-                except shutil.SameFileError:
-                    # This case is handled by the check above, but we keep it for safety.
-                    print(
-                        f"Input file '{input_file_basename}' is already in the working directory '{cwd}'. No copy needed.")
-                except Exception as e:
-                    error_message = f"Failed to copy input file to output directory: {e}"
+                    shutil.rmtree(cwd)
+                except OSError as e:
+                    error_message = f"Fatal: Error removing existing output directory '{cwd}': {e}"
                     print(error_message)
                     return False, "", error_message
-            else:
-                print(
-                    f"Input file '{input_file_basename}' is already in the working directory '{cwd}'. No copy needed.")
-
+            
+            # Recreate the directory and write the staged input file.
+            os.makedirs(cwd, exist_ok=True)
+            staged_input_file_path = os.path.join(cwd, input_file_basename)
+            try:
+                with open(staged_input_file_path, 'w') as f:
+                    f.write(input_file_content)
+                print(f"Staged input file '{input_file_basename}' in working directory '{cwd}'")
+            except IOError as e:
+                error_message = f"Fatal: Failed to write staged input file to '{staged_input_file_path}': {e}"
+                print(error_message)
+                return False, "", error_message
+            
             input_file_path_for_cmd = input_file_basename
         else:
+            # If no output directory, run in the input file's directory.
             cwd = os.path.abspath(os.path.dirname(original_input_file_abspath) or '.')
             input_file_path_for_cmd = input_file_basename
             staged_input_file_path = original_input_file_abspath

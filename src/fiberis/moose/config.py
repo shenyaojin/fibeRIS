@@ -205,7 +205,7 @@ class PostprocessorConfigBase:
     def __init__(self,
                  name: str,
                  pp_type: str, # MOOSE type of the postprocessor
-                 execute_on: Optional[Union[str, List[str]]] = None,
+                 execute_on: Optional[Union[str, List[str]]] = ['initial', 'timestep_end', 'final'],
                  variable: Optional[str] = None, # For postprocessors operating on a single variable
                  variables: Optional[List[str]] = None, # For postprocessors operating on multiple variables
                  other_params: Optional[Dict[str, Any]] = None):
@@ -448,17 +448,13 @@ class TimeSequenceStepper:
         else:
             self.time_sequence: str = '' # Initialize as empty string if not provided
 
-    @classmethod
-    def from_data1d(cls, data1d_obj: Data1D) -> 'TimeSequenceStepper':
+    def from_data1d(self, data1d_obj: Data1D) -> None:
         """
-        Creates a TimeSequenceStepper from a Data1D object's time axis.
+        Loads the time sequence from a Data1D object's time axis, modifying the instance in place.
 
         Args:
             data1d_obj (Data1D): The Data1D object containing the time axis (taxis).
-
-        Returns:
-            TimeSequenceStepper: A new instance configured with the time sequence.
         """
         if data1d_obj.taxis is None or data1d_obj.taxis.size == 0:
             raise ValueError("Data1D object must have a non-empty taxis to create a TimeSequenceStepper.")
-        return cls(time_sequence=data1d_obj.taxis)
+        self.time_sequence = ' '.join(map(str, data1d_obj.taxis))
