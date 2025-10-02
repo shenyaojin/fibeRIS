@@ -129,3 +129,16 @@ def load_h5_by_group_name(filepath: str, group_name: str) -> np.ndarray:
         except KeyError:
             print(f"Group '{group_name}' not found in file '{filepath}'. Returning an empty array.")
             return np.array([])
+
+
+def list_h5_keys(filepath: str) -> list:
+    """
+    Lists all the keys (group and dataset names) in an HDF5 file.
+
+    :param filepath: The path to the H5 file.
+    :return: A list of strings, where each string is a key.
+    """
+    keys = []
+    with h5py.File(filepath, 'r') as file:
+        file.visit(keys.append)
+    return keys
