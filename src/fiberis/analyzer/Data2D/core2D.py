@@ -110,7 +110,6 @@ class Data2D:
 
         self.taxis = taxis
         self.history.add_record("Time axis (taxis) updated.", level="INFO")
-
     def set_daxis(self, daxis: np.ndarray) -> None:
         """
         Set the depth/spatial axis. Validates if data dimension matches if data exists.
@@ -146,6 +145,17 @@ class Data2D:
         self.start_time = start_time
         self.history.add_record(f"Start time updated to: {start_time.isoformat()}", level="INFO")
 
+    def remove_timezone(self) -> None:
+        """
+        Removes timezone information from the start_time attribute if it exists.
+        This is useful to prevent warnings with numpy.datetime64.
+        """
+        if self.start_time and self.start_time.tzinfo:
+            self.start_time = self.start_time.replace(tzinfo=None)
+            self.history.add_record("Timezone information removed from start_time.", level="INFO")
+        else:
+            self.history.add_record("No timezone information to remove from start_time.", level="INFO")
+
     def set_name(self, name: str) -> None:
         """
         Set the name/identifier for the data.
@@ -174,6 +184,15 @@ class Data2D:
             f"set_filename called with {args}. Setting name to '{new_name}'. Consider using set_name for clarity.",
             level="WARNING")
         self.set_name(new_name)
+
+    def rename(self, *args: str) -> None:
+        """
+        Alias of the function set_name.
+
+        :param args: Set the name/identifier for the data.
+        :return: None
+        """
+        self.set_name(*args)
 
     def load_npz(self, filename: str) -> None:
         """
@@ -787,15 +806,20 @@ class Data2D:
         if self.start_time is None: raise ValueError("start_time is not set.")
         if self.taxis is None: raise ValueError("taxis is not set.")
 
+        start_time_for_calc = self.start_time
+        if start_time_for_calc.tzinfo is not None:
+            # Create a temporary timezone-naive datetime for numpy calculation to avoid warning
+            start_time_for_calc = start_time_for_calc.replace(tzinfo=None)
+
         try:
             taxis_for_timedelta = self.taxis
             if not np.issubdtype(taxis_for_timedelta.dtype, np.floating):
                 taxis_for_timedelta = self.taxis.astype(float)
             timedeltas = np.array(taxis_for_timedelta, dtype='timedelta64[s]')
-            return np.datetime64(self.start_time) + timedeltas
+            return np.datetime64(start_time_for_calc) + timedeltas
         except Exception as e:
             self.history.add_record(f"Warning: Using fallback for time calculation due to: {e}", level="WARNING")
-            return np.array([self.start_time + datetime.timedelta(seconds=float(t)) for t in self.taxis])
+            return np.array([start_time_for_calc + datetime.timedelta(seconds=float(t)) for t in self.taxis])
 
     def calculate_time_seconds(self) -> Optional[np.ndarray]:
         """Returns the time axis in seconds relative to start_time."""
