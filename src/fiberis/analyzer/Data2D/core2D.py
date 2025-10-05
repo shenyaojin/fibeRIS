@@ -858,17 +858,67 @@ class Data2D:
 
         filtered_data = np.zeros_like(self.data)
         for i in range(self.data.shape[0]):
-            filtered_data[i, :] = signal_utils.bpfilter(
+            filtered_data[i, :] = signal_utils.lpfilter(
                 self.data[i, :],
                 dt=dt,
-                lowcut=0,
-                highcut=cutoff_freq,
+                freqcut=cutoff_freq,
                 order=order,
                 axis=-1
             )
         self.data = filtered_data
         self.history.add_record(
             f"Applied low-pass filter: cutoff={cutoff_freq}Hz, order={order}, sample_rate_used={actual_sample_rate:.2f}Hz.",
+            level="INFO")
+
+    def apply_bandpass_filter(self, lowcut_freq: float, highcut_freq: float, sample_rate: Optional[float] = None, order: int = 5) -> None:
+        """
+        Apply a band-pass filter to the data along the time axis (axis=1).
+
+        Args:
+            lowcut_freq (float): Lower cutoff frequency for the band-pass filter.
+            highcut_freq (float): Upper cutoff frequency for the band-pass filter.
+            sample_rate (Optional[float]): Sample rate. If None, calculated from taxis.
+            order (int): Filter order. Default 5.
+        """
+        if self.data is None or self.taxis is None:
+            raise ValueError("Data and taxis must be set to apply filter.")
+        if self.data.size == 0 or self.taxis.size < 2:
+            self.history.add_record("Skipped bandpass filter: data empty or taxis too short.", level="WARNING")
+            return
+
+        dt: float
+        if sample_rate is None:
+            dt = np.mean(np.diff(self.taxis))
+            if dt <= 0:
+                raise ValueError("Calculated dt from taxis is non-positive. Check taxis.")
+            actual_sample_rate = 1.0 / dt
+        else:
+            actual_sample_rate = sample_rate
+            dt = 1.0 / actual_sample_rate
+
+        nyquist_freq = 0.5 * actual_sample_rate
+        if highcut_freq >= nyquist_freq:
+            self.history.add_record(
+                f"Warning: Highcut frequency ({highcut_freq}Hz) is >= Nyquist frequency ({nyquist_freq}Hz). Filter might not be effective or stable.",
+                level="WARNING")
+        if lowcut_freq <= 0:
+            self.history.add_record(
+                f"Warning: Lowcut frequency ({lowcut_freq}Hz) is <= 0. This may cause issues.",
+                level="WARNING")
+
+        filtered_data = np.zeros_like(self.data)
+        for i in range(self.data.shape[0]):
+            filtered_data[i, :] = signal_utils.bpfilter(
+                self.data[i, :],
+                dt=dt,
+                lowcut=lowcut_freq,
+                highcut=highcut_freq,
+                order=order,
+                axis=-1
+            )
+        self.data = filtered_data
+        self.history.add_record(
+            f"Applied band-pass filter: lowcut={lowcut_freq}Hz, highcut={highcut_freq}Hz, order={order}, sample_rate_used={actual_sample_rate:.2f}Hz.",
             level="INFO")
 
     def get_value_by_depth(self, depth: float, interpolate: bool = False) -> Optional[np.ndarray]:

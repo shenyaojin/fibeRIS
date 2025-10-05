@@ -384,90 +384,16 @@ def matdatenum_to_pydatetime(matlab_datenum: float) -> datetime.datetime:
     Returns:
         Python datetime object.
     """
-    # MATLAB's epoch is January 0, 0000. Python's is January 1, 0001.
-    # MATLAB's datenum for 0000-01-01 is 1.
-    # Ordinal for 0001-01-01 is 1.
-    # Python's datetime.fromordinal(1) is 0001-01-01.
-    # MATLAB datenum 1 -> Python datetime.fromordinal(1) + timedelta(days=1%1) - timedelta(days=366)
-    # Let's test with a known value: 719529 (Jan 1, 1970)
-    # python_datetime = datetime.datetime.fromordinal(int(matlab_datenum)) + \
-    #                   timedelta(days=matlab_datenum % 1) - \
-    #                   timedelta(days=366) # This is the common formula
-    # A more direct way:
-    # MATLAB epoch starts on datenum 0 = 00-Jan-0000
-    # Python ordinal for 1-Jan-0001 is 1.
-    # Difference is 366 days (day 1 in MATLAB is 0000-01-01, day 1 in Python is 0001-01-01)
-    # Or, using a known reference point like MATLAB's datenum for 1970-01-01 (719529)
-    # and Python's datetime(1970,1,1).
-    days = matlab_datenum - 366.0  # Adjust for Python's ordinal base (1-Jan-0001)
-    # from MATLAB's (0-Jan-0000 interpreted as 1-Jan-0000 for date calcs)
-    # No, the original offset is from a different interpretation.
-    # Standard formula:
-    python_datetime = datetime.datetime.fromordinal(int(matlab_datenum + 366)) + \
-                      timedelta(days=matlab_datenum % 1) - \
-                      timedelta(days=366)
-    # The original formula was:
-    # python_datetime = datetime.datetime.fromordinal(int(matlab_datenum)) + timedelta(days=matlab_datenum % 1) - timedelta(days=366)
-    # This works because datetime.fromordinal(1) is 0001-01-01.
-    # And MATLAB's datenum for 0001-01-01 is 367.
-    # So, if matlab_datenum = 367, int(367) - 366 = 1. fromordinal(1) is 0001-01-01. Correct.
-    return python_datetime
-
-
-def rfft_xcorr(x: np.ndarray, y: np.ndarray) -> np.ndarray:
-    """
-    Computes cross-correlation using real FFT.
-    The output is structured to be used by xcor_match.
-
-    Args:
-        x: First signal.
-        y: Second signal.
-
-    Returns:
-        Cross-correlation result array.
-        The length is len(x) + len(y) - 1.
-        The array is constructed by concatenating:
-        - correlation values for non-negative lags (y shifted right w.r.t x, up to len(x)-1 shifts)
-        - correlation values for negative lags (y shifted left w.r.t x)
-    """
-    M = len(x) + len(y) - 1  # Length of full linear cross-correlation
-    # Pad to next power of 2 for FFT efficiency
-    N = 2 ** int(np.ceil(np.log2(M)))
-
-    X = np.fft.rfft(x, N)
-    Y = np.fft.rfft(y, N)
-
-    # Conjugate Y for cross-correlation
-    cxy_full = np.fft.irfft(X * np.conj(Y), N)
-
-    # The hstack below reconstructs a specific ordering of correlation lags.
-    # It takes the first len(x) points from cxy_full (representing certain lags)
-    # and appends points from the end of cxy_full (representing other lags).
-    # This specific arrangement is expected by xcor_match.
-    # cxy_full[0] corresponds to zero lag if x and y are perfectly aligned at their starts in circular sense.
-    # For linear correlation, interpretation of lags from raw fft output needs care.
-    # This function's hstack produces an array of length M.
-    # The first len(x) elements correspond to positive lags (0 to len(x)-1).
-    # The remaining len(y)-1 elements correspond to negative lags (-(len(y)-1) to -1),
-    # but their values in the concatenated array are cxy_full[N - len(y) + 1:]
-    # This is a custom arrangement.
-    # A standard 'full' correlation would be cxy_full[:M], and lags would typically be
-    # interpreted from -(len(y)-1) to len(x)-1.
-
-    # Part 1: Corresponds to lags where y is shifted from 0 to len(x)-1 relative to x's start
-    part1 = cxy_full[:len(x)]
-    # Part 2: Corresponds to lags where y is shifted from -(len(y)-1) to -1 relative to x's start
-    # These are taken from the end of the circular correlation result.
-    part2 = cxy_full[N - len(y) + 1:] if len(y) > 1 else np.array([])
-
-    cxy = np.hstack((part1, part2))
-    return cxy
+    # 719529 is the MATLAB datenum for 1970-01-01 (the Unix epoch).
+    # Conversion is done by finding seconds from epoch and using utcfromtimestamp.
+    return datetime.datetime.utcfromtimestamp((matlab_datenum - 719529) * 86400)
 
 
 def xcor_match(a: np.ndarray, b: np.ndarray, threshold: float = 0.3) -> float:
     """
     Finds the optimal lag between two signals 'a' and 'b' using cross-correlation.
     The lag indicates how much 'b' should be shifted to best match 'a'.
+    TEST FAILED. DO NOT USE IT. --Shenyao
 
     Args:
         a: First signal (reference).
@@ -485,8 +411,8 @@ def xcor_match(a: np.ndarray, b: np.ndarray, threshold: float = 0.3) -> float:
         # print("Warning: xcor_match received empty or unequal length arrays.")
         return np.nan
 
-    x = a.copy()
-    ref = b.copy()
+    x = a.copy().astype(float)
+    ref = b.copy().astype(float)
 
     # Detrend by removing mean
     x -= np.mean(x)
@@ -499,43 +425,15 @@ def xcor_match(a: np.ndarray, b: np.ndarray, threshold: float = 0.3) -> float:
     try:
         r, _ = pearsonr(x, ref)
     except ValueError:  # Can happen if variance is zero
-        return np.nan
+        r = 1.0 # Assume correlation for signals with no variance
 
     if abs(r) < threshold:
-        return np.nan
+        pass
 
-    cxy = rfft_xcorr(x, ref)  # Uses the custom rfft_xcorr
-    if len(cxy) == 0:  # Should not happen if x, ref are not empty
-        return np.nan
-
+    cxy = np.correlate(x, ref, mode='full')
     index = np.argmax(cxy)
-
-    # Interpretation of 'index' based on rfft_xcorr's output structure:
-    # If index < len(x), it's a non-negative lag. The value 'index' itself.
-    # This means ref (b) aligns best with a segment of x starting at 'index'.
-    # (e.g., index 0 means b aligns with x[0:len(b)]).
-    # If index >= len(x), it's a negative lag.
-    # The lag value is index - len(cxy).
-    # len(cxy) = len(x) + len(ref) - 1. Since len(x)==len(ref), len(cxy) = 2*len(x)-1.
-    # Example: len(x)=10. cxy length 19.
-    # Positive lags: index 0..9.
-    # Negative lags: index 10..18.
-    # If index = 10, lag = 10 - 19 = -9.
-    # This lag indicates the shift of 'ref' relative to 'x'.
-    # A positive 'index' (0 to len(x)-1) directly implies the starting point in 'x'
-    # where 'ref' aligns after being shifted 'index' samples to the right.
-    # A lag value derived as `index - (len(ref) - 1)` is more standard for 'full' correlation.
-    # The current return value:
-    #   - `index` if `index < len(x)`: This is the shift of `ref` to the right to align with `x`.
-    #                                 The peak of correlation occurs when `ref` aligns with `x[index : index+len(ref)]`.
-    #   - `index - len(cxy)` if `index >= len(x)`: This is a negative shift.
-    if index < len(x):
-        # Positive lag: ref is shifted right by 'index' samples.
-        # Or, x is shifted left by 'index' samples to match ref.
-        return float(index)
-    else:  # Negative lag
-        # ref is shifted left.
-        return float(index - len(cxy))
+    lag = - (index - (len(ref) - 1))
+    return float(lag)
 
 
 def timeshift_xcor(data1: np.ndarray, data2: np.ndarray, winsize: int,
@@ -646,7 +544,7 @@ def timeshift_xcor(data1: np.ndarray, data2: np.ndarray, winsize: int,
     # So, `shift_data1[i]` gets its value from `data1[ori_x[i] + ts[i]]`.
     # This means if ts[i] is positive, we look *later* in data1. Data1 is shifted left.
 
-    tar_x = ori_x + ts  # These are source indices in data1 for the new timeline ori_x
+    tar_x = ori_x - ts  # These are source indices in data1 for the new timeline ori_x
     shift_data1 = np.interp(tar_x, ori_x, data1)
     return ts, shift_data1
 
