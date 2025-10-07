@@ -6,7 +6,14 @@
 
 ## Functions of fiberis
 
-
+### Data management
+TBD
+### Data cleansing
+TBD
+### Data processing
+TBD
+### Simulation
+I just can't find a phrase like "data xxx" :(
 
 ## Installation
 
