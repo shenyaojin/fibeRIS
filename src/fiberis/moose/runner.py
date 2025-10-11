@@ -11,15 +11,18 @@ class MooseRunner:
     A class to manage and run MOOSE simulations.
     """
 
-    def __init__(self, moose_executable_path: str):
+    def __init__(self, moose_executable_path: str, mpiexec_path: Optional[str] = None):
         """
         Initializes the MooseRunner.
 
         Args:
             moose_executable_path (str): The absolute path to the MOOSE executable
                                          (e.g., '/path/to/moose/your_app-opt' or 'your_app-opt' if in PATH).
+            mpiexec_path (Optional[str]): The absolute path to the mpiexec executable.
+                                          If None, it's assumed to be in the system PATH.
         """
         self._original_moose_executable_path = moose_executable_path
+        self.mpiexec_path = mpiexec_path
 
         resolved_path = shutil.which(moose_executable_path)
         if resolved_path:
@@ -117,9 +120,10 @@ class MooseRunner:
 
         command = []
         if num_processors > 1:
-            if not shutil.which("mpiexec"):
-                raise EnvironmentError("mpiexec not found in PATH. Cannot run in parallel.")
-            command.extend(["mpiexec", "-n", str(num_processors)])
+            mpiexec_executable = self.mpiexec_path or shutil.which("mpiexec")
+            if not mpiexec_executable:
+                raise EnvironmentError("mpiexec not found. Please provide the path to mpiexec via the 'mpiexec_path' argument or ensure it's in the system PATH.")
+            command.extend([mpiexec_executable, "-n", str(num_processors)])
 
         command.append(self.moose_executable_path)
         command.extend(["-i", input_file_path_for_cmd])
