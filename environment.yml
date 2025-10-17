@@ -1,0 +1,11 @@
+name: moose
+channels:
+  - https://conda.software.inl.gov/public
+  - conda-forge
+dependencies:
+  - moose-dev==2025.05.13=mpich
+  - poetry
+  - netcdf4
+  - scikit-learn
+  - scikit-optimize
+prefix: /rcp/rcp42/home/shenyaojin/miniforge/envs/moose
