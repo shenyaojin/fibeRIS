@@ -25,7 +25,7 @@ class MOOSEPointSamplerReader(core.DataIO):
         super().__init__()
         self.variable_name: Optional[str] = None
 
-    def read(self, folder: str, variable_index: int = 1):
+    def read(self, folder: str, variable_index: int = 1) -> None:
         """
         Automatically finds and reads a MOOSE Point Sampler CSV file from a directory.
 
@@ -92,7 +92,7 @@ class MOOSEPointSamplerReader(core.DataIO):
             self.record_log(msg, level="ERROR")
             raise ValueError(msg) from e
 
-    def write(self, filename: str, *args):
+    def write(self, filename: str, *args) -> None:
         """
         Write the loaded data to the standard fibeRIS .npz file format.
 
@@ -167,7 +167,7 @@ class MOOSEPointSamplerReader(core.DataIO):
             raise ValueError(msg) from e
 
 
-    def to_analyzer(self):
+    def to_analyzer(self) -> Data1D_MOOSEps:
         """
         Convert the loaded data to a Data1DMOOSEps analyzer object.
 
