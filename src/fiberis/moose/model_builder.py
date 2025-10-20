@@ -1198,7 +1198,7 @@ class ModelBuilder:
             f.write("\n\n".join(all_rendered_blocks))
         print(f"MOOSE input file generated: {output_filepath}")
 
-    def plot_geometry(self):
+    def plot_geometry(self, save_path: Optional[str] = None) -> None:
         """
         Generates and displays a plot of the model's geometry based on stored info.
         """
@@ -1280,6 +1280,10 @@ class ModelBuilder:
         # Invert y-axis for better visualization
         ax.invert_yaxis()
         fig.tight_layout()
+        # Save the plot if a path is provided
+        if save_path:
+            plt.savefig(save_path, dpi=300)
+            print(f"Geometry plot saved to: {save_path}")
         plt.show()
 
     @staticmethod
