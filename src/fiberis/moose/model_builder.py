@@ -1284,7 +1284,8 @@ class ModelBuilder:
         if save_path:
             plt.savefig(save_path, dpi=300)
             print(f"Geometry plot saved to: {save_path}")
-        plt.show()
+        else:
+            plt.show() # Display the plot interactively
 
     @staticmethod
     def build_example_with_all_features(output_filepath: str = "example_full_build.i"):
