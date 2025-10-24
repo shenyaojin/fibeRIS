@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def time_sampling_optimizer(pds1d, full_step_solution, half_step_solution, dt, tol=1e-3, *args, **kwargs):
+def time_sampling_optimizer(pds1d, full_step_solution, half_step_solution, dt, tol=1e-3, *args, **kwargs) -> float:
     """
     Optimize the time sampling for the 1D pressure diffusion problem.
     Args:
@@ -12,7 +12,7 @@ def time_sampling_optimizer(pds1d, full_step_solution, half_step_solution, dt, t
         *args: additional arguments
         **kwargs: additional keyword arguments
     Returns:
-        No return value. All the results will be stored/modifed in the pds1d object.
+        updated_dt: the updated time step for the next iteration
     """
     # Calculate the error
     error = np.linalg.norm(full_step_solution - half_step_solution) / np.linalg.norm(full_step_solution)
