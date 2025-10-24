@@ -19,7 +19,7 @@ classifiers = [
     "Development Status :: 3 - Alpha", # Or "4 - Beta" or "5 - Production/Stable"
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License", # Update if your license is different
+    "License :: OSI Approved :: DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
