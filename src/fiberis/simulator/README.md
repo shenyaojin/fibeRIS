@@ -1,6 +1,6 @@
 # `fiberis.simulator`
 
-This package provides a lightweight, one-dimensional finite-difference simulator for modeling pressure diffusion in porous media, such as a reservoir rock surrounding a wellbore. It is designed to quickly simulate pressure responses that might be observed with fiber optic sensing.
+This package provides a **lightweight, one-dimensional finite-difference** simulator for modeling pressure diffusion in media, such as a reservoir rock surrounding a wellbore. It is designed to quickly simulate pressure responses that might be observed with fiber optic sensing, while you don't have MOOSE installed on your system.
 
 The simulator is organized into three main sub-packages: `core`, `solver`, and `optimizer`.
 
