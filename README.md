@@ -22,7 +22,7 @@ TBD
 The `moose` module is a wrapper of MOOSE framework, which can be used to build much more complex models and perform multiphysics simulations. Both simulators can be used to simulate the pressure diffusion along the fiber optic cable. And more importantly, the `moose` module can be used to interpret the strain response from the fiber optic cable using 
 the model called HMM (Hydro-Mechanical Model).
 
-See [This notebook](../examples/scripts/simulator/moose_simulator.ipynb) to learn how to use the `moose` module to build a MOOSE model and simulate the pressure diffusion along the fiber optic cable.
+See [This notebook](examples/scripts/simulator/moose_simulator.ipynb) to learn how to use the `moose` module to build a MOOSE model and simulate the pressure diffusion along the fiber optic cable.
 
 ## Installation
 
