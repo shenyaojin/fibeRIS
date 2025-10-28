@@ -4,6 +4,7 @@
 # Docs finished by Gemini, 06/03/2025
 
 import datetime
+import os
 from typing import List, Dict, Optional, Callable, Any
 
 
@@ -96,6 +97,60 @@ class InfoManagementSystem:
         for rec in filtered_records:
             timestamp_str = rec['timestamp'].strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]  # Millisecond precision
             print(f"[{rec.get('level', 'N/A')}] {timestamp_str}: {rec['description']}")
+
+    def save_records_to_txt(self, save_path: Optional[str] = None,
+                            filter_fn: Optional[Callable[[Dict[str, Any]], bool]] = None) -> str:
+        """
+        Saves the records to a .txt file, optionally filtered.
+
+        If no save_path is provided, it saves the file in the current working
+        directory with a timestamped filename. If a directory is provided,
+        it saves the file inside that directory with the same naming convention.
+
+        Parameters
+        ----------
+        save_path : str, optional
+            The directory or full file path where the log should be saved.
+            If a directory is given, a timestamped filename will be generated.
+            If None, the current working directory is used.
+        filter_fn : callable, optional
+            A function to filter which records are saved.
+
+        Returns
+        -------
+        str
+            The path to the saved file, or an empty string if saving failed.
+        """
+        filtered_records = self.get_records(filter_fn)
+        if not filtered_records:
+            print("No records to save.")
+            return ""
+
+        if save_path and os.path.isdir(save_path):
+            timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+            filename = f"history_log_{timestamp}.txt"
+            filepath = os.path.join(save_path, filename)
+        elif save_path:  # Assumes it's a full file path
+            filepath = save_path
+        else:
+            # Default to current working directory
+            timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+            filename = f"history_log_{timestamp}.txt"
+            filepath = os.path.join(os.getcwd(), filename)
+
+        try:
+            with open(filepath, 'w') as f:
+                for rec in filtered_records:
+                    timestamp_str = rec['timestamp'].strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+                    f.write(f"Timestamp: {timestamp_str}\n")
+                    f.write(f"Level:     {rec.get('level', 'N/A')}\n")
+                    f.write(f"Message:   {rec['description']}\n")
+                    f.write("-" * 50 + "\n")
+            print(f"Records successfully saved to {filepath}")
+            return filepath
+        except IOError as e:
+            print(f"Error saving records to {filepath}: {e}")
+            return ""
 
     def clear_records(self) -> None:
         """
