@@ -1,4 +1,11 @@
 # src/fiberis/moose/editor.py
+# This script provides a MooseModelEditor class to programmatically modify
+# a configured ModelBuilder instance from the fiberis library. It allows users to
+# tweak parameters of a MOOSE model without rebuilding it from scratch, facilitating
+# parameter studies and optimization tasks.
+
+# Shenyao Jin, 10/27/2025
+
 from __future__ import annotations
 from typing import List, Any, Optional, TYPE_CHECKING
 
