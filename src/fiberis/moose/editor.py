@@ -95,26 +95,13 @@ class MooseModelEditor:
         else:
             raise ValueError(f"Could not find a block at the specified path: {block_path}")
 
-    def _dump_recursive(self, block: MooseBlock, prefix: str = ""):
-        """Helper for recursively printing block structure."""
-        block_path_str = f"{prefix}[{block.block_name}]"
-        print(block_path_str)
-        for name, value in block.params.items():
-            print(f"{prefix}  . {name} = {value}")
-
-        for sub_block in block.sub_blocks:
-            self._dump_recursive(sub_block, prefix=f"{prefix}  ")
-
     def print_model_structure(self):
         """
-        Prints a tree-like structure of the entire model, showing all
-        block paths and their parameters. Useful for discovering the
-        correct `block_path` for editing.
+        Prints a tree-like structure of the entire model by calling the
+        ModelBuilder's __str__ method. Useful for discovering the correct
+        `block_path` for editing.
         """
-        print("--- MOOSE Model Structure ---")
-        for block in self.builder._top_level_blocks:
-            self._dump_recursive(block)
-        print("-----------------------------")
+        print(self.builder)
 
     def _find_param_recursive(self, parameter_name: str, current_blocks: List[MooseBlock], current_path: List[str], found_paths: List[List[str]]):
         """
