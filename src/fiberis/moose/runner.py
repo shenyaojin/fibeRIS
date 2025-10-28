@@ -46,7 +46,8 @@ class MooseRunner:
             additional_args: Optional[List[str]] = None,
             moose_env_vars: Optional[Dict[str, str]] = None,
             log_file_name: Optional[str] = "log.txt",
-            stream_output: bool = True) -> Tuple[bool, str, str]:
+            stream_output: bool = True,
+            clean_output_dir: bool = True) -> Tuple[bool, str, str]:
         """
         Runs a MOOSE simulation and optionally logs STDOUT.
 
@@ -65,6 +66,9 @@ class MooseRunner:
             stream_output (bool): If True (default), streams MOOSE output to the console in real-time.
                                   When streaming, stderr is merged into stdout.
                                   If False, output is captured and returned after the process completes.
+            clean_output_dir (bool): If True (default), the output directory will be removed
+                                     before the simulation to ensure a clean run. If False,
+                                     existing files will be preserved.
 
         Returns:
             Tuple[bool, str, str]: A tuple containing:
@@ -90,7 +94,7 @@ class MooseRunner:
         if output_directory:
             # If an output directory is specified, prepare it.
             cwd = os.path.abspath(output_directory)
-            if os.path.exists(cwd):
+            if os.path.exists(cwd) and clean_output_dir:
                 print(f"Output directory '{cwd}' exists. Removing it to ensure a clean run.")
                 try:
                     shutil.rmtree(cwd)
