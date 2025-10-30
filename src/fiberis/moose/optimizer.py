@@ -146,10 +146,16 @@ class Optimizer:
         for name, value in params.items():
             if name in self.parameter_space:
                 loc = self.parameter_space[name]['location']
+
+                # Convert single float permeability values to the required tensor string format for MOOSE
+                new_value = value
+                if 'perm' in name and isinstance(value, (float, np.floating)):
+                    new_value = f"'{value} 0 0 0 {value} 0 0 0 {value}'"
+
                 self._editor.set_parameter(
                     block_path=loc['block_path'],
                     parameter_name=loc['parameter_name'],
-                    new_value=value
+                    new_value=new_value
                 )
         
         # 3. Generate the MOOSE input file
@@ -240,7 +246,12 @@ class Optimizer:
         # Try to run the misfit function and catch any errors
         try:
             print("Executing misfit function...")
-            misfit_value = self.misfit_function(simulation_results=sim_data, **misfit_args)
+            # Pass dynamic arguments like instance_id and the specific params to the misfit function
+            current_misfit_args = misfit_args.copy()
+            current_misfit_args['instance_id'] = instance_id
+            # The user is expected to provide test_params for this test run
+            current_misfit_args['params'] = test_params
+            misfit_value = self.misfit_function(simulation_results=sim_data, **current_misfit_args)
 
             if np.isnan(misfit_value):
                 print("ERROR: Misfit function returned NaN.")
@@ -308,7 +319,12 @@ class Optimizer:
 
             # 4. Calculate misfit
             try:
-                misfit = self.misfit_function(simulation_results=sim_data, **misfit_args)
+                # Pass dynamic arguments like instance_id and the current params to the misfit function
+                current_misfit_args = misfit_args.copy()
+                current_misfit_args['instance_id'] = instance_id
+                current_misfit_args['params'] = params
+                misfit = self.misfit_function(simulation_results=sim_data, **current_misfit_args)
+
                 if np.isnan(misfit):
                     print("Warning: Misfit function returned NaN. Penalizing.")
                     misfit = 1e10
