@@ -1,4 +1,5 @@
-# Toolkit reading files. Might be useful for other projects so I put it here.
+# Toolkit reading files. Might be useful for other projects so I put it here. -- Shenyao
+
 import h5py
 import numpy as np
 from typing import Optional
