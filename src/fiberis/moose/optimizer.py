@@ -34,7 +34,7 @@ class Optimizer:
 
     def __init__(
         self,
-        base_model: ModelBuilder,
+        model_builder_function: Callable[[], ModelBuilder],
         runner: MooseRunner,
         parameter_space: Dict[str, Dict],
         misfit_function: Callable,
@@ -46,8 +46,9 @@ class Optimizer:
         Initializes the Optimizer.
 
         Args:
-            base_model (ModelBuilder): A fully configured ModelBuilder instance that serves
-                                       as the template for all simulations.
+            model_builder_function (Callable[[], ModelBuilder]): A function that returns a fully configured
+                                                               ModelBuilder instance. This function will be
+                                                               called to get a fresh model for simulations.
             runner (MooseRunner): An instance of the MooseRunner to execute simulations.
             parameter_space (Dict): A dictionary defining the parameters to optimize, their
                                     search space, and their location in the ModelBuilder.
@@ -71,7 +72,7 @@ class Optimizer:
                                                     are met, False otherwise.
             working_directory (str): The root directory to store all simulation runs and logs.
         """
-        self.base_model = base_model
+        self.model_builder = model_builder_function()
         self.runner = runner
         self.parameter_space = parameter_space
         self.misfit_function = misfit_function
@@ -80,7 +81,7 @@ class Optimizer:
         self.results: List[Dict[str, Any]] = []
 
         # Internal components
-        self._editor = MooseModelEditor(self.base_model)
+        self._editor = MooseModelEditor(self.model_builder)
         self._working_directory = os.path.abspath(working_directory)
         os.makedirs(self._working_directory, exist_ok=True)
         print(f"Optimizer initialized. Working directory: {self._working_directory}")
@@ -162,7 +163,7 @@ class Optimizer:
         input_filepath = os.path.join(run_dir, "input.i")
         # Ensure directory exists before writing the input file, especially if not cleaning
         os.makedirs(run_dir, exist_ok=True)
-        self.base_model.generate_input_file(input_filepath)
+        self.model_builder.generate_input_file(input_filepath)
 
         # 4. Run the simulation
         success, _, _ = self.runner.run(
@@ -213,7 +214,7 @@ class Optimizer:
             success = True
         else:
             # Check if any PointValue samplers are configured, which would generate the CSV.
-            ps_configs = [pp for pp in self.base_model.postprocessor_info.get('postprocessors', [])
+            ps_configs = [pp for pp in self.model_builder.postprocessor_info.get('postprocessors', [])
                           if pp.get('pp_type') == 'PointValue']
             if not ps_configs:
                 print("Warning: No PointValue postprocessors found in the model. The simulation may not generate the expected CSV output for the default loader.")
