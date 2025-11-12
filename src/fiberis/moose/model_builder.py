@@ -1250,7 +1250,7 @@ class ModelBuilder:
         return builder
 
     # --- Debugging and Visualization ---
-    def plot_geometry(self, save_path: Optional[str] = None) -> None:
+    def plot_geometry(self, save_path: Optional[str] = None, hide_legend: Optional[bool] = False, **kwargs) -> None:
         """
         Generates and displays a plot of the model's geometry based on stored info.
         """
@@ -1326,7 +1326,10 @@ class ModelBuilder:
         ax.set_xlabel("X-coordinate")
         ax.set_ylabel("Y-coordinate")
         ax.set_title(f"Model Geometry: {self.project_name}")
-        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
+        if hide_legend:
+            pass
+        else:
+            ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
         ax.set_aspect('auto', adjustable='box')
         plt.grid(True, linestyle='--', alpha=0.6)
         # Invert y-axis for better visualization

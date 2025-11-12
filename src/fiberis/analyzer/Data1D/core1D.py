@@ -366,7 +366,7 @@ class Data1D:
         self.taxis = self.taxis[::factor]
         self.history.add_record(f"Down sampled data by a factor of {factor}. New length: {self.data.size}.", level="INFO")
 
-    def get_end_time(self, use_timestamp: bool = False) -> Union[datetime.datetime, np.float64]:
+    def get_end_time(self, use_timestamp: bool = True) -> Union[datetime.datetime, np.float64]:
 
         """
         Get the end time of the data.
