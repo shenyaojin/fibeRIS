@@ -684,6 +684,57 @@ class Data1D:
             f"Removed/replaced {num_removed} abnormal data point(s) using '{method}' method with threshold {threshold}.",
             level="INFO")
 
+    def lpfilter(self, freqcut: float, order: int = 2) -> None:
+        """
+        Apply a low-pass Butterworth filter to the data. Modifies self.data in place.
+        This method uses a zero-phase digital filter (filtfilt).
+
+        Note:
+            This filter assumes a constant sampling rate. It calculates the average
+            sampling interval from `self.taxis`. If the time axis is highly
+            non-uniform, the result may be inaccurate. Consider interpolating to a
+            uniform time axis first using `self.interpolate()`.
+
+        Args:
+            freqcut (float): The cutoff frequency for the low-pass filter in Hz.
+            order (int): The order of the Butterworth filter. Defaults to 2.
+
+        Raises:
+            ValueError: If data or taxis is not loaded, or if there are too few
+                        data points to compute a sampling rate or apply a filter.
+        """
+        if self.data is None or self.taxis is None or self.data.size == 0:
+            self.history.add_record("Error: Cannot apply low-pass filter, data or taxis is not loaded or is empty.", level="ERROR")
+            raise ValueError("Data or taxis is not loaded or is empty.")
+
+        if self.data.size < 2:
+            self.history.add_record("Warning: Not enough data points to determine sampling rate for lpfilter. No action taken.", level="WARNING")
+            return
+
+        # Calculate the average sampling interval (dt)
+        dt = np.mean(np.diff(self.taxis))
+        if dt <= 0:
+            self.history.add_record(f"Error: Cannot apply low-pass filter, calculated average dt is non-positive ({dt:.4f}).", level="ERROR")
+            raise ValueError("Calculated average sampling interval must be positive.")
+
+        # Check for highly non-uniform sampling as a warning
+        stdev_dt = np.std(np.diff(self.taxis))
+        if stdev_dt / dt > 0.1:  # If standard deviation is more than 10% of the mean
+            self.history.add_record(f"Warning: Time axis (taxis) appears to be non-uniform (mean dt: {dt:.4f}, std: {stdev_dt:.4f}). Filter results may be inaccurate.", level="WARNING")
+
+        # The padlen for filtfilt must be less than data length.
+        # Default padlen is 3 * max(len(a), len(b)). For a 2nd order filter, this is small.
+        # Let's add a check for data length.
+        if self.data.size < 10:  # Arbitrary small number, filtfilt can fail on very short series.
+            self.history.add_record(f"Warning: Data size ({self.data.size}) is very small for filtering. Results may be unreliable.", level="WARNING")
+
+        try:
+            self.data = signal_utils.lpfilter(self.data, dt=dt, freqcut=freqcut, order=order)
+            self.history.add_record(f"Applied low-pass filter with cutoff frequency {freqcut} Hz and order {order}.", level="INFO")
+        except Exception as e:
+            self.history.add_record(f"An error occurred during low-pass filtering: {e}", level="ERROR")
+            raise
+
     def interpolate(self, new_taxis: Union[np.ndarray, List[float]],
                     new_start_time: Optional[datetime.datetime] = None,
                     fill_value_left: Optional[Any] = np.nan,  # Allow 'extrapolate'
@@ -811,7 +862,8 @@ class Data1D:
         """
         Downsample the data to a specific number of points using a greedy breakpoint selection algorithm.
         This method selects the most significant points to preserve the overall shape of the curve.
-        Modifies self.data and self.taxis in place. -- Shenyao
+        * Modifies self.data and self.taxis in place. -- Shenyao
+        * NOTE: This mathod is very sentive to noise. Consider using self.remove_abnormal_data() before this method if data is noisy. -- Shenyao
 
         Args:
             n_points (int): The target number of points for the downsampled data.
