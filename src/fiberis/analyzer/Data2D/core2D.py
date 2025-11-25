@@ -1,6 +1,6 @@
 # Define the class Data2D and its methods
-# Original Author: Shenyao Jin, shenyaojin@mines.edu
-# Improved by Gemini, 03/06/2025
+# The Data2D class is designed to handle two-dimensional data with time and depth axes.
+# Shenyao Jin, shenyaojin@mines.edu
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -626,6 +626,7 @@ class Data2D:
     def plot(self, ax: Optional[Axes] = None, method: str = 'imshow',
              use_timestamp: bool = False, xaxis_rotation: float = 0,
              xtick_n: int = 5, ytick_n: Optional[int] = None,
+             clim: Optional[Tuple[float, float]] = None,
              **kwargs: Any) -> Union[AxesImage, QuadMesh, None]:
         """
         Plot the 2D data.
@@ -679,6 +680,7 @@ class Data2D:
         kwargs.pop('xaxis_rotation', None)
         kwargs.pop('xtick_n', None)
         kwargs.pop('ytick_n', None)
+        kwargs.pop('clim', None) # Pop clim if it was passed via kwargs
         # Pop legacy versions of tickN if they exist from old test calls
         kwargs.pop('xtickN', None)
         kwargs.pop('ytickN', None)
@@ -713,6 +715,11 @@ class Data2D:
                 f"Warning: Data is not 2D (shape: {self.data.shape}). Plotting may fail or be incorrect.",
                 level="WARNING")
             sorted_data = self.data
+
+        # Apply clim if provided
+        if clim is not None:
+            kwargs['vmin'] = clim[0]
+            kwargs['vmax'] = clim[1]
 
         img_artist: Union[AxesImage, QuadMesh]
         # Remaining kwargs are now only for imshow/pcolormesh

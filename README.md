@@ -3,7 +3,7 @@
 **fibeRIS: Fiber Optic Reservoir Integrated Simulator**
 
 `fibeRIS` is a Python-based toolkit for the analysis, simulation, and management of data relevant to reservoir engineering, with a particular focus on Distributed Fiber Optic Sensing (DFOS) data. It is developed by me and (currently) only serves for my research purpose.
-I tried to make it compatible to unix-like systems, but I can't promise it could work on your machine.
+I tried to make it compatible to unix-like systems, but I can't promise it could 100% work  (especially `fiberis.moose`) on your machine. If you have problem installing fiberis please email me at `shenyaojin@mines.edu`.
 
 This project provides a suite of modules for handling multi-dimensional datasets, performing signal processing, simulating pressure diffusion, and programmatically controlling the [MOOSE (Multiphysics Object-Oriented Simulation Environment)](https://mooseframework.inl.gov/) framework.
 
