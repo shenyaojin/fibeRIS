@@ -4,6 +4,12 @@
 
 import numpy as np
 from fiberis.utils import history_utils
+import matplotlib.pyplot as plt
+from typing import Optional, Any
+from matplotlib.axes import Axes
+# This import is necessary for the '3d' projection
+from mpl_toolkits.mplot3d import Axes3D
+
 
 class DataG3D():
 
@@ -137,4 +143,50 @@ class DataG3D():
         """Return the summary string of the DataG3D object."""
         return self.get_info_str()
 
-     # Add plot functions here in the future. Not urgent.
+     def plot(self, ax: Optional[Axes] = None, **kwargs: Any):
+        """
+        Plot the 3D geometry.
+
+        Args:
+            ax (Optional[Axes]): Matplotlib axes to plot on. If None, a new figure and 3D axes are created.
+                                 If provided, it is assumed to be a 3D axes.
+            **kwargs: Additional arguments passed to `ax.plot`.
+
+        Returns:
+            The artist object(s) created.
+        """
+        if self.xaxis is None or self.yaxis is None or self.zaxis is None:
+            self.history.add_record("Error: Cannot plot. xaxis, yaxis, or zaxis is not set.", level="ERROR")
+            raise ValueError("xaxis, yaxis, or zaxis is not set.")
+
+        new_figure_created = False
+        if ax is None:
+            fig, ax = plt.subplots(subplot_kw={"projection": "3d"}, figsize=kwargs.pop('figsize', (8, 6)))
+            new_figure_created = True
+
+        # Pop plot-specific parameters from kwargs before passing to ax.plot
+        xlabel = kwargs.pop('xlabel', "X coordinate")
+        ylabel = kwargs.pop('ylabel', "Y coordinate")
+        zlabel = kwargs.pop('zlabel', "Z coordinate")
+        title = kwargs.pop('title', None)
+
+        # The plot function will raise an error if ax is not a 3D axes, which is reasonable.
+        artist = ax.plot(self.xaxis, self.yaxis, self.zaxis, **kwargs)
+
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.set_zlabel(zlabel)
+
+        if title is not None:
+            ax.set_title(title)
+        elif new_figure_created and self.name:
+            ax.set_title(f"3D Geometry: {self.name}")
+
+        if new_figure_created and not plt.isinteractive():
+            plt.show()
+
+        self.history.add_record(
+            f"Plot generated for '{self.name if self.name else 'Unnamed DataG3D'}'.",
+            level="INFO")
+
+        return artist
