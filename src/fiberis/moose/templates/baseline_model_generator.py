@@ -23,7 +23,25 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
     by QCing the original script multiple times.
     --Shenyao Jin
 
-    :param kwargs: see the code below for details :O. To many parameters...
+    :param project_name: The name of the project. Defaults to "BaselineModel".
+    :param model_width: The width of the model domain in meters. Defaults to 200.0 * 0.3048.
+    :param fracture_y_coords: A list of y-coordinates for the fractures. Defaults to [0.0].
+    :param model_length: The length of the model domain in meters. Defaults to 800.0 * 0.3048.
+    :param nx: The number of elements in the x-direction. Defaults to 200.
+    :param ny_per_layer_half: The number of elements in the y-direction for each half-layer. Defaults to 80.
+    :param bias_y: The mesh bias in the y-direction. Defaults to 1.2.
+    :param matrix_perm: The permeability of the matrix. Defaults to 1e-18.
+    :param srv_perm: The permeability of the SRV. Defaults to 1e-15.
+    :param fracture_perm: The permeability of the fracture. Defaults to 1e-13.
+    :param srv_length_ft: The length of the SRV in feet. Defaults to 400.
+    :param srv_height_ft: The height of the SRV in feet. Defaults to 20.
+    :param hf_length_ft: The length of the hydraulic fracture in feet. Defaults to 250.
+    :param hf_height_ft: The height of the hydraulic fracture in feet. Defaults to 0.2.
+    :param initial_pressure: The initial pressure of the model. Defaults to 5.17E7.
+    :param monitoring_point_shift_ft: The shift of the monitoring point in feet. Defaults to 80.
+    :param start_offset_y: The start offset of the fiber sampler in the y-direction. Defaults to 20.
+    :param end_offset_y: The end offset of the fiber sampler in the y-direction. Defaults to 20.
+    :param num_fiber_points: The number of points in the fiber sampler. Defaults to 200.
     :return: A ModelBuilder object representing the baseline model.
     """
     # Define default parameters
@@ -232,8 +250,7 @@ def post_processor_info_extractor(**kwargs) -> List[Data2D]:
     This function extracts post-processor information from the simulation results.
     Will return two Data2D objects: one for pressure, one for strain_yy.
 
-    :param kwargs: Parameters to customize the extraction. See the code for details.
-                   'output_dir' (str): The directory containing the MOOSE output CSV files.
+    :param output_dir: The directory containing the MOOSE output CSV files.
     :return: A list of Data2D objects representing the extracted post-processor data.
     """
     output_dir = kwargs.get("output_dir")

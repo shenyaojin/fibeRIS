@@ -12,6 +12,12 @@ class MooseBlock:
     """
 
     def __init__(self, block_name: str, block_type: Union[str, None] = None):
+        """
+        Initializes a MooseBlock object.
+
+        :param block_name: The name of the block.
+        :param block_type: The type of the block.
+        """
         self.block_name: str = block_name
         self.block_type: Union[str, None] = block_type
         self.params: Dict[str, Any] = {}
