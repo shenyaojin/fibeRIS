@@ -143,14 +143,15 @@ class DataG3D():
         """Return the summary string of the DataG3D object."""
         return self.get_info_str()
 
-     def plot(self, ax: Optional[Axes] = None, **kwargs: Any):
+     def plot(self, ax: Optional[Axes] = None, mode: str = "line", **kwargs: Any):
         """
         Plot the 3D geometry.
 
         Args:
             ax (Optional[Axes]): Matplotlib axes to plot on. If None, a new figure and 3D axes are created.
                                  If provided, it is assumed to be a 3D axes.
-            **kwargs: Additional arguments passed to `ax.plot`.
+            mode (str): The plotting mode, either "line" (default) or "scatter".
+            **kwargs: Additional arguments passed to `ax.plot` or `ax.scatter`.
 
         Returns:
             The artist object(s) created.
@@ -164,14 +165,18 @@ class DataG3D():
             fig, ax = plt.subplots(subplot_kw={"projection": "3d"}, figsize=kwargs.pop('figsize', (8, 6)))
             new_figure_created = True
 
-        # Pop plot-specific parameters from kwargs before passing to ax.plot
+        # Pop plot-specific parameters from kwargs before passing to ax.plot/scatter
         xlabel = kwargs.pop('xlabel', "X coordinate")
         ylabel = kwargs.pop('ylabel', "Y coordinate")
         zlabel = kwargs.pop('zlabel', "Z coordinate")
         title = kwargs.pop('title', None)
 
-        # The plot function will raise an error if ax is not a 3D axes, which is reasonable.
-        artist = ax.plot(self.xaxis, self.yaxis, self.zaxis, **kwargs)
+        if mode == "line":
+            artist = ax.plot(self.xaxis, self.yaxis, self.zaxis, **kwargs)
+        elif mode == "scatter":
+            artist = ax.scatter(self.xaxis, self.yaxis, self.zaxis, **kwargs)
+        else:
+            raise ValueError(f"Invalid plot mode: {mode}. Choose 'line' or 'scatter'.")
 
         ax.set_xlabel(xlabel)
         ax.set_ylabel(ylabel)
@@ -186,7 +191,7 @@ class DataG3D():
             plt.show()
 
         self.history.add_record(
-            f"Plot generated for '{self.name if self.name else 'Unnamed DataG3D'}'.",
+            f"Plot generated for '{self.name if self.name else 'Unnamed DataG3D'}' in '{mode}' mode.",
             level="INFO")
 
         return artist

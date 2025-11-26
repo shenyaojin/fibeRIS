@@ -10,11 +10,16 @@ This project provides a suite of modules for handling multi-dimensional datasets
 ## Functions of fiberis
 
 ### Data management
-TBD
+
+`fiberis` is optimized to handle TB level DFOS datasets efficiently. It provides a set of tools for loading, storing, and managing large-scale datasets. `TBD` for example jupyter notebook.
+
 ### Data cleansing
-TBD
+
+`fiberis` includes various signal processing algorithms to cleanse DFOS data, such as outlier detection, slippage correction, and noise filtering. `TBD` for example jupyter notebook.
+
 ### Data processing
-TBD
+
+`TBD` for example jupyter notebook.
 
 ### Simulation toolkits
 
@@ -32,8 +37,8 @@ You can install `fibeRIS` using pip:
 pip install fiberis
 ```
 
-This GitHub repository is the lastest development version, while you can also install the stable version from PyPI. using the command above.
+This GitHub repository is the lastest development version, while you can also install the stable version from PyPI. using the command above. Please email me if you find any discrepancies between the two versions.
 
 ## License
 
-This project is licensed under the WTFPL – Do What the Fuck You Want to Public License. See the `LICENSE` file for details.
+Currently, **this specific version** of `fiberis` project is licensed under the WTFPL – Do What the Fuck You Want to Public License. See the `LICENSE` file for details.
