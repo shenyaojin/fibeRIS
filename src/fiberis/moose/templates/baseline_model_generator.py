@@ -1,8 +1,7 @@
-# This model builder will create a simple baseline model for history matching tasks.
-# I will illustrate this model in my paper, so please refer to the paper published in
-# It uses the data from Mariner. For confidential purposes, no real data is included in fiberis.
-# Please replace the data loading section with your own data source.
-# Shenyao Jin, shenyaojin@mines.edu, 11/16/2025
+# This model builder will refer to `scripts/DSS_history_match/106r2_SingleFracScanner_test_func.py`
+# Which provides a better, more stable baseline model for history matching tasks.
+# This is working correctly now. I'm happy with it. :P
+# Shenyao Jin, 11/24/2025
 
 import numpy as np
 import os
@@ -19,42 +18,45 @@ from fiberis.io.reader_moose_vpp import MOOSEVectorPostProcessorReader
 
 def build_baseline_model(**kwargs) -> ModelBuilder:
     """
-    This function builds a baseline model for history matching tasks.
-    It contains a one-fracture with one-SRV setup.
-    Most of the parameters are changeable through kwargs.
+    In this function, I extract the common baseline model building steps from 106r2_SingleFracScanner_test_func.py
+    to create a reusable baseline model generator. This script should be much more stable and no mistakes should be made
+    by QCing the original script multiple times.
+    --Shenyao Jin
 
-    -- Built by Shenyao Jin, 11/16/2025
-
-    :param kwargs: Parameters to customize the model. See the code for details.
-    :return: A ModelBuilder object representing the baseline model, which is ready to render and run.
+    :param kwargs: see the code below for details :O. To many parameters...
+    :return: A ModelBuilder object representing the baseline model.
     """
+    # Define default parameters
+    conversion_factor = 0.3048  # feet to meters
 
-    builder = ModelBuilder(project_name=kwargs.get("project_name", "baseline_model"))
-    frac_coords = 0  # Should be in the center of the model
+    # Start building the model
+    builder = ModelBuilder(project_name=kwargs.get("project_name", "BaselineModel"))
+    domain_bounds = (- kwargs.get('model_width', 200.0 * conversion_factor),
+                     + kwargs.get('model_width', 200.0 * conversion_factor))
 
-    conversion_factor = 0.3048  # feet to meters, I just don't want to change all the numbers
-    domain_bounds = (- kwargs.get('model_width', 50.0 * conversion_factor),
-                     + kwargs.get('model_width', 50.0 * conversion_factor))
-
-    domain_length = kwargs.get('model_length', 400.0 * conversion_factor)
-
+    frac_coords = kwargs.get('fracture_y_coords', [0.0 * conversion_factor])
+    # If frac_coords is a list (for multi-fracture mesh), use the first element for this single-fracture model's center.
+    frac_y_center = frac_coords[0] if isinstance(frac_coords, list) else frac_coords
+    domain_length = kwargs.get('model_length', 800.0 * conversion_factor)
     builder.build_stitched_mesh_for_fractures(
         fracture_y_coords=frac_coords,
         domain_bounds=domain_bounds,
         domain_length=domain_length,
         nx=kwargs.get('nx', 200),
-        ny_per_layer_half=kwargs.get('ny_per_layer_half', 100),
-        bias_y=kwargs.get('bias_y', 1.05)
+        ny_per_layer_half=kwargs.get('ny_per_layer_half', 80),
+        bias_y=kwargs.get('bias_y', 1.2)
     )
 
     matrix_perm = kwargs.get('matrix_perm', 1e-18)
     srv_perm = kwargs.get('srv_perm', 1e-15)
     fracture_perm = kwargs.get('fracture_perm', 1e-13)
 
+    # The tensor format for permeability in fiberis:
     matrix_perm_str = f"{matrix_perm} 0 0 0 {matrix_perm} 0 0 0 {matrix_perm}"
     srv_perm_str = f"{srv_perm} 0 0 0 {srv_perm} 0 0 0 {srv_perm}"
     fracture_perm_str = f"{fracture_perm} 0 0 0 {fracture_perm} 0 0 0 {fracture_perm}"
 
+    # Material properties
     matrix_mats = ZoneMaterialProperties(porosity=0.01, permeability=matrix_perm_str)
     srv_mats = ZoneMaterialProperties(porosity=0.1, permeability=srv_perm_str)
     fracture_mats = ZoneMaterialProperties(porosity=0.16, permeability=fracture_perm_str)
@@ -62,17 +64,17 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
     builder.set_matrix_config(MatrixConfig(name="matrix", materials=matrix_mats))
 
     center_x_val = domain_length / 2.0
-    srv_length_ft2 = kwargs.get('srv_length_ft', 285)
-    srv_height_ft2 = kwargs.get('srv_height_ft', 5)
+    srv_length_ft = kwargs.get('srv_length_ft', 400)
+    srv_height_ft = kwargs.get('srv_height_ft', 20)  # <- Changed here. From 50 to 20
     hf_length_ft = kwargs.get('hf_length_ft', 250)
     hf_height_ft = kwargs.get('hf_height_ft', 0.2)
 
     geometries = [
-        SRVConfig(name="srv", length=srv_length_ft2 * conversion_factor, height=srv_height_ft2 * conversion_factor,
-                  center_x=center_x_val, center_y=frac_coords, materials=srv_mats),
+        SRVConfig(name="srv", length=srv_length_ft * conversion_factor, height=srv_height_ft * conversion_factor,
+                  center_x=center_x_val, center_y=frac_y_center, materials=srv_mats),
         HydraulicFractureConfig(name="hf", length=hf_length_ft * conversion_factor,
                                 height=hf_height_ft * conversion_factor, center_x=center_x_val,
-                                center_y=frac_coords, materials=fracture_mats)
+                                center_y=frac_y_center, materials=fracture_mats)
     ]
 
     sorted_geometries = sorted(geometries, key=lambda x: x.height, reverse=True)
@@ -87,47 +89,10 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
         next_block_id += 1
 
     builder.add_nodeset_by_coord(nodeset_op_name="injection", new_boundary_name="injection",
-                                 coordinates=(center_x_val, frac_coords, 0))
-
-    # Load pressure gauge data from Mariner dataset for injection and time stepping
-    # This section is adapted from scripts/DSS_history_match/108_misfit_func.py for better convergence.
-    pressure_gauge_g1_path = kwargs.get("pressure_gauge_g1_path", "data/fiberis_format/prod/gauges/pressure_g1.npz")
-    injection_gauge_pressure_path = kwargs.get("injection_gauge_pressure_path", "data/fiberis_format/prod/gauges/gauge4_data_prod.npz")
-
-    # Load and preprocess gauge data
-    gauge_data_interference = Data1DGauge()
-    gauge_data_interference.load_npz(pressure_gauge_g1_path)
-
-    injection_gauge_pressure = Data1DGauge()
-    injection_gauge_pressure.load_npz(injection_gauge_pressure_path)
-    # Select the production data up to the point where the interference data begins.
-    injection_gauge_pressure.select_time(injection_gauge_pressure.start_time, gauge_data_interference.start_time)
-    injection_gauge_pressure.remove_abnormal_data(threshold=300, method='mean')
-
-    # Create copies for processing
-    injection_gauge_pressure_copy = injection_gauge_pressure.copy()
-    gauge_data_interference_copy = gauge_data_interference.copy()
-    injection_gauge_pressure_copy.adaptive_downsample(300)
-    gauge_data_interference_copy.adaptive_downsample(600)
-
-    # Shift the interference gauge data to align with DSS data (one is wellhead, the other is downhole)
-    if len(injection_gauge_pressure.data) > 0:
-        difference_val = injection_gauge_pressure.data[-1] - gauge_data_interference.data[0]
-        gauge_data_interference_copy.data += difference_val
-
-    # Merge the two profiles
-    injection_gauge_pressure_copy.select_time(datetime.datetime(2020, 4, 1, 0, 0, 0),
-                                              injection_gauge_pressure_copy.get_end_time()) # Note the start time here!
-    gauge_data_for_moose = injection_gauge_pressure_copy.copy()
-    gauge_data_for_moose.right_merge(gauge_data_interference_copy)
-    # Quick fix: remove abnormal high pressures
-    gauge_data_for_moose.data = 6894.76 * gauge_data_for_moose.data  # Convert psi to Pa
-    savepath = "data/fiberis_format/post_processing/history_matching_pressure_profile_full.npz"
-    if not os.path.exists(savepath):
-        gauge_data_for_moose.savez(savepath)
+                                 coordinates=(center_x_val, frac_y_center, 0))
 
     builder.add_variables([
-        {"name": "pp", "params": {"initial_condition": kwargs.get('initial_pressure', gauge_data_for_moose.data[0])}},
+        {"name": "pp", "params": {"initial_condition": kwargs.get('initial_pressure', 5.17E7)}},
         {"name": "disp_x", "params": {"initial_condition": 0}},
         {"name": "disp_y", "params": {"initial_condition": 0}}
     ])
@@ -154,10 +119,13 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
         solid_bulk_compliance=2E-11
     )
 
-    builder.add_piecewise_function_from_data1d(
-        name = "injection_pressure_func",
-        source_data1d = gauge_data_for_moose
-    )
+    # "data/fiberis_format/post_processing/injection_pressure_full_profile.npz" <- injection pressure profile
+    # Load gauge data for MOOSE, I have already packed the data in fiberis format.
+    gauge_data_for_moose = Data1DGauge()
+    gauge_data_for_moose.load_npz("data/fiberis_format/post_processing/injection_pressure_full_profile.npz")
+    gauge_data_for_moose.data = 6894.76 * gauge_data_for_moose.data  # Convert psi to Pa
+
+    builder.add_piecewise_function_from_data1d(name="injection_pressure_func", source_data1d=gauge_data_for_moose)
 
     builder.set_hydraulic_fracturing_bcs(
         injection_well_boundary_name="injection",
@@ -168,85 +136,80 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
 
     builder.add_standard_tensor_aux_vars_and_kernels({"stress": "stress", "total_strain": "strain"})
 
-    # Add post-processors
-    # There will be (1) one sample at the center of the fracture, (2) one at monitoring point
-    # (3) The fiber will be treated as a linear sampler.
-
-    shift_val_ft = kwargs.get('monitoring_point_shift_ft', 80) # The distance from monitor well to the center of the fracture
+    # Add post-processors to model builder
+    # This part is from baseline_model_builder.py (v1) which provides better post-processing options.
+    shift_val_ft = kwargs.get('monitoring_point_shift_ft', 80)
 
     # Center point sampler, pressure
     builder.add_postprocessor(
         PointValueSamplerConfig(
-            name = "hf_center_pressure_sampler",
-            variable = "pp",
-            point = (center_x_val, frac_coords, 0)
+            name="hf_center_pressure_sampler",
+            variable="pp",
+            point=(center_x_val, frac_y_center, 0)
         )
     )
 
     # Center point sampler, strain_yy
     builder.add_postprocessor(
         PointValueSamplerConfig(
-            name = "hf_center_strain_yy_sampler",
-            variable = "strain_yy",
-            point = (center_x_val, frac_coords, 0)
+            name="hf_center_strain_yy_sampler",
+            variable="strain_yy",
+            point=(center_x_val, frac_y_center, 0)
         )
     )
 
     # Monitoring point sampler, pressure
     builder.add_postprocessor(
         PointValueSamplerConfig(
-            name = "monitor_point_pressure_sampler",
-            variable = "pp",
-            point = (center_x_val + shift_val_ft * conversion_factor, frac_coords, 0)
+            name="monitor_point_pressure_sampler",
+            variable="pp",
+            point=(center_x_val + shift_val_ft * conversion_factor, frac_y_center, 0)
         )
     )
 
     # Monitoring point sampler, strain_yy
     builder.add_postprocessor(
         PointValueSamplerConfig(
-            name = "monitor_point_strain_yy_sampler",
-            variable = "strain_yy",
-            point = (center_x_val + shift_val_ft * conversion_factor, frac_coords, 0)
+            name="monitor_point_strain_yy_sampler",
+            variable="strain_yy",
+            point=(center_x_val + shift_val_ft * conversion_factor, frac_y_center, 0)
         )
     )
 
     # Line sampler along the fracture, pressure
     builder.add_postprocessor(
         LineValueSamplerConfig(
-            name = "fiber_pressure_sampler",
-            variable = "pp",
-            start_point = (center_x_val + shift_val_ft * conversion_factor, domain_bounds[0] + kwargs.get("start_offset_y", 20) * conversion_factor, 0),
-            end_point = (center_x_val + shift_val_ft * conversion_factor, domain_bounds[1] - kwargs.get("end_offset_y", 20) * conversion_factor, 0),
-            num_points = kwargs.get("num_fiber_points", 200),
-            other_params = {'sort_by': 'y'}
+            name="fiber_pressure_sampler",
+            variable="pp",
+            start_point=(center_x_val + shift_val_ft * conversion_factor,
+                         domain_bounds[0] + kwargs.get("start_offset_y", 20) * conversion_factor, 0),
+            end_point=(center_x_val + shift_val_ft * conversion_factor,
+                       domain_bounds[1] - kwargs.get("end_offset_y", 20) * conversion_factor, 0),
+            num_points=kwargs.get("num_fiber_points", 200),
+            other_params={'sort_by': 'y'}
         )
     )
 
     # Line sampler along the fracture, strain_yy
     builder.add_postprocessor(
         LineValueSamplerConfig(
-            name = "fiber_strain_yy_sampler",
-            variable = "strain_yy",
-            start_point = (center_x_val + shift_val_ft * conversion_factor, domain_bounds[0] + kwargs.get("start_offset_y", 20) * conversion_factor, 0),
-            end_point = (center_x_val + shift_val_ft * conversion_factor, domain_bounds[1] - kwargs.get("end_offset_y", 20) * conversion_factor, 0),
-            num_points = kwargs.get("num_fiber_points", 200),
-            other_params = {'sort_by': 'y'}
+            name="fiber_strain_yy_sampler",
+            variable="strain_yy",
+            start_point=(center_x_val + shift_val_ft * conversion_factor,
+                         domain_bounds[0] + kwargs.get("start_offset_y", 20) * conversion_factor, 0),
+            end_point=(center_x_val + shift_val_ft * conversion_factor,
+                       domain_bounds[1] - kwargs.get("end_offset_y", 20) * conversion_factor, 0),
+            num_points=kwargs.get("num_fiber_points", 200),
+            other_params={'sort_by': 'y'}
         )
     )
 
-    # Define the time stepper
+    # Time sequence stepper
     total_time = gauge_data_for_moose.taxis[-1] - gauge_data_for_moose.taxis[0]
-    # Down sample two dataframes to reduce computational cost
-    # Logic here can be improved in the future.
-    gauge_data_interference_stepper = gauge_data_interference_copy.copy()
-    injection_gauge_pressure_stepper = injection_gauge_pressure_copy.copy()
-    gauge_data_interference_stepper.adaptive_downsample(120)
-    injection_gauge_pressure_stepper.adaptive_downsample(30)
-    timestepper_profile = injection_gauge_pressure_stepper.copy()
-    timestepper_profile.select_time(timestepper_profile.start_time, gauge_data_interference_stepper.start_time)
-    timestepper_profile.right_merge(gauge_data_interference_stepper)
+    # Down sample two dataframes to speed up the simulation.
+    timestepper_profile = Data1DGauge()
+    timestepper_profile.load_npz("data/fiberis_format/post_processing/timestepper_profile.npz")
 
-    # Define the time stepper function
     dt_control_func = TimeSequenceStepper()
     dt_control_func.from_data1d(timestepper_profile)
 
@@ -262,6 +225,7 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
     builder.add_outputs_block(exodus=False, csv=True)
 
     return builder
+
 
 def post_processor_info_extractor(**kwargs) -> List[Data2D]:
     """
@@ -284,7 +248,7 @@ def post_processor_info_extractor(**kwargs) -> List[Data2D]:
 
     for i in range(max_processor_id + 1):
         vector_reader.read(directory=output_dir, post_processor_id=i, variable_index=1)
-        
+
         if "fiber_pressure_sampler" in vector_reader.sampler_name:
             pressure_data2d = vector_reader.to_analyzer()
         elif "fiber_strain_yy_sampler" in vector_reader.sampler_name:
@@ -296,7 +260,6 @@ def post_processor_info_extractor(**kwargs) -> List[Data2D]:
         raise FileNotFoundError("Could not find and extract 'fiber_strain_yy_sampler' data.")
 
     return [pressure_data2d, strain_data2d]
-
 
 if __name__ == "__main__":
     print("Don't run this script directly. It is meant to be imported as a module.\n--Shenyao")

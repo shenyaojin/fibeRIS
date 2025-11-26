@@ -1,6 +1,5 @@
-# This model builder will refer to `scripts/DSS_history_match/106r2_SingleFracScanner_test_func.py`
-# Which provides a better, more stable baseline model for history matching tasks.
-# This is working correctly now. I'm happy with it. :P
+# This model builder is a specialized version for Fervo's history matching tasks.
+
 # Shenyao Jin, 11/24/2025
 
 import numpy as np
@@ -143,8 +142,8 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
     # Center point sampler, pressure
     builder.add_postprocessor(
         PointValueSamplerConfig(
-            name="hf_center_pressure_sampler",
-            variable="pp",
+            name="hf_center_dispx_sampler",
+            variable="disp_x",
             point=(center_x_val, frac_y_center, 0)
         )
     )
@@ -152,8 +151,8 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
     # Center point sampler, strain_yy
     builder.add_postprocessor(
         PointValueSamplerConfig(
-            name="hf_center_strain_yy_sampler",
-            variable="strain_yy",
+            name="hf_center_dispy_sampler",
+            variable="disp_y",
             point=(center_x_val, frac_y_center, 0)
         )
     )
@@ -161,8 +160,8 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
     # Monitoring point sampler, pressure
     builder.add_postprocessor(
         PointValueSamplerConfig(
-            name="monitor_point_pressure_sampler",
-            variable="pp",
+            name="monitor_point_dispx_sampler",
+            variable="disp_x",
             point=(center_x_val + shift_val_ft * conversion_factor, frac_y_center, 0)
         )
     )
@@ -170,8 +169,8 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
     # Monitoring point sampler, strain_yy
     builder.add_postprocessor(
         PointValueSamplerConfig(
-            name="monitor_point_strain_yy_sampler",
-            variable="strain_yy",
+            name="monitor_point_dispy_sampler",
+            variable="disp_y",
             point=(center_x_val + shift_val_ft * conversion_factor, frac_y_center, 0)
         )
     )
@@ -179,8 +178,8 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
     # Line sampler along the fracture, pressure
     builder.add_postprocessor(
         LineValueSamplerConfig(
-            name="fiber_pressure_sampler",
-            variable="pp",
+            name="fiber_dispx_sampler",
+            variable="disp_x",
             start_point=(center_x_val + shift_val_ft * conversion_factor,
                          domain_bounds[0] + kwargs.get("start_offset_y", 20) * conversion_factor, 0),
             end_point=(center_x_val + shift_val_ft * conversion_factor,
@@ -193,8 +192,8 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
     # Line sampler along the fracture, strain_yy
     builder.add_postprocessor(
         LineValueSamplerConfig(
-            name="fiber_strain_yy_sampler",
-            variable="strain_yy",
+            name="fiber_dispy_sampler",
+            variable="disp_y",
             start_point=(center_x_val + shift_val_ft * conversion_factor,
                          domain_bounds[0] + kwargs.get("start_offset_y", 20) * conversion_factor, 0),
             end_point=(center_x_val + shift_val_ft * conversion_factor,
