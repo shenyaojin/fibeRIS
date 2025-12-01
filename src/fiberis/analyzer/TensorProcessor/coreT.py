@@ -14,10 +14,11 @@ from fiberis.utils.history_utils import InfoManagementSystem
 
 class CoreTensor:
     """
-    Class for Tensor processor in fiberis.analyzer.
+    Class for Tensor processor in fiberis.analyzer. It handles tensor data (like stress or strain tensors) over time.
+
+    If you find any issues email me at shenyaojin@mines.edu.
 
     Usage: MOOSE module.
-
     """
 
 

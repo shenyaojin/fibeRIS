@@ -340,7 +340,10 @@ def misfit_calculator(**kwargs) -> float:
         # Weight the misfit
         weighted_channel_misfit = weight_matrix[iter_chan] * channel_misfit
         total_misfit += weighted_channel_misfit
-
+        # For debugging
+        print(f"Channel {iter_chan}: Depth {obs_depth:.2f} ft, "
+              f"Simulated center index {sim_fracture_center_ind}, Observed center index {observed_data_fracture_center_ind}, "
+              f"Channel misfit {channel_misfit:.4e}, Weighted channel misfit {weighted_channel_misfit:.4e}")
     return total_misfit
 
 if __name__ == "__main__":
