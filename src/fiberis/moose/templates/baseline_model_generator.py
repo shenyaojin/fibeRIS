@@ -337,6 +337,10 @@ def misfit_calculator(**kwargs) -> float:
         # Calibrate the two dataframes to have the same time axis
         sim_data_chan_dataframe.interpolate(new_taxis = obs_data_chan_dataframe.taxis,
                                             new_start_time = obs_data_chan_dataframe.start_time)
+
+        # Initial time calibration
+        sim_data_chan_dataframe.data -= sim_data_chan_dataframe.data[1]
+
         # Calculate misfit
         channel_misfit = np.sum((sim_data_chan_dataframe.data[1:-1] - obs_data_chan_dataframe.data[1:-1]) ** 2)
         # Weight the misfit

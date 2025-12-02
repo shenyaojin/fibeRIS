@@ -251,6 +251,9 @@ class CoreTensor:
         For 2D tensors, it performs a standard 2D rotation.
         For 3D tensors, it performs a rotation around the Z-axis.
 
+        Usage:
+            tensor_processor.rotate_tensor(np.radians(np.pi/4))  # Rotate by 45 degrees
+
         :param degree: The rotation angle in radians.
         :raises TypeError: If degree is not a float or int.
         :raises ValueError: If data or dimension is not set, or if dimension is not 2 or 3.
