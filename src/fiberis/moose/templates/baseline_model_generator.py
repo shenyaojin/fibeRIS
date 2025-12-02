@@ -6,6 +6,7 @@
 import numpy as np
 import os
 import datetime
+import matplotlib.pyplot as plt
 from fiberis.analyzer.Data1D.Data1D_Gauge import Data1DGauge
 from fiberis.analyzer.Data2D.core2D import Data2D
 from typing import List
@@ -295,6 +296,7 @@ def misfit_calculator(**kwargs) -> float:
     # the fracture center in the observed data
     simulated_data: Data2D = kwargs.get('simulated_data')  # The simulated Data2D object
     observed_data: Data2D = kwargs.get('observed_data')  # The observed
+    save_path = kwargs.get('save_path', None)
     simulated_data.daxis = simulated_data.daxis / conversion_factor  # Convert to feet
 
     if simulated_data is None or observed_data is None:
@@ -336,7 +338,7 @@ def misfit_calculator(**kwargs) -> float:
         sim_data_chan_dataframe.interpolate(new_taxis = obs_data_chan_dataframe.taxis,
                                             new_start_time = obs_data_chan_dataframe.start_time)
         # Calculate misfit
-        channel_misfit = np.sum((sim_data_chan_dataframe.data - obs_data_chan_dataframe.data) ** 2)
+        channel_misfit = np.sum((sim_data_chan_dataframe.data[1:-1] - obs_data_chan_dataframe.data[1:-1]) ** 2)
         # Weight the misfit
         weighted_channel_misfit = weight_matrix[iter_chan] * channel_misfit
         total_misfit += weighted_channel_misfit
@@ -344,6 +346,29 @@ def misfit_calculator(**kwargs) -> float:
         print(f"Channel {iter_chan}: Depth {obs_depth:.2f} ft, "
               f"Simulated center index {sim_fracture_center_ind}, Observed center index {observed_data_fracture_center_ind}, "
               f"Channel misfit {channel_misfit:.4e}, Weighted channel misfit {weighted_channel_misfit:.4e}")
+
+        # Create and save the plot
+        fig, ax = plt.subplots()
+        ax.plot(obs_data_chan_dataframe.taxis, obs_data_chan_dataframe.data, label='Observed')
+        ax.plot(sim_data_chan_dataframe.taxis, sim_data_chan_dataframe.data, label='Simulated')
+        ax.legend()
+        ax.set_title(f'Channel {iter_chan} at Depth {obs_depth:.2f} ft')
+        ax.set_xlabel('Time (s)')
+        ax.set_ylabel('Value')
+        misfit_text = f'Channel Misfit: {channel_misfit:.4e}\nWeighted Misfit: {weighted_channel_misfit:.4e}'
+        ax.text(0.05, 0.95, misfit_text, transform=ax.transAxes, fontsize=10,
+                verticalalignment='top', bbox=dict(boxstyle='round,pad=0.5', fc='yellow', alpha=0.5))
+
+        if save_path:
+            if not os.path.isdir(save_path):
+                os.makedirs(save_path, exist_ok=True)
+            plot_filename = os.path.join(save_path, f'misfit_channel_{iter_chan}_depth_{obs_depth:.2f}.png')
+        else:
+            plot_filename = f'misfit_channel_{iter_chan}_depth_{obs_depth:.2f}.png'
+
+        plt.savefig(plot_filename)
+        plt.close(fig)
+
     return total_misfit
 
 if __name__ == "__main__":
