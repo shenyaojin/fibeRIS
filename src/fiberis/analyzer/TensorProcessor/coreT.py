@@ -244,3 +244,49 @@ class CoreTensor:
         )
         self.history.add_record(f"Data successfully saved to {filename}.", level="INFO")
         return self
+
+    def rotate_tensor(self, degree: float) -> None:
+        """
+        Rotates the tensor data in-place by a given degree (in radians).
+        For 2D tensors, it performs a standard 2D rotation.
+        For 3D tensors, it performs a rotation around the Z-axis.
+
+        :param degree: The rotation angle in radians.
+        :raises TypeError: If degree is not a float or int.
+        :raises ValueError: If data or dimension is not set, or if dimension is not 2 or 3.
+        """
+        if not isinstance(degree, (float, int)):
+            msg = "Rotation degree must be a float or an integer."
+            self.history.add_record(f"Error: {msg}", level='error')
+            raise TypeError(msg)
+
+        if self.data is None or self.dim is None:
+            msg = "Cannot rotate tensor: data or dimension is not set."
+            self.history.add_record(f"Error: {msg}", level='error')
+            raise ValueError(msg)
+
+        cos_theta = np.cos(degree)
+        sin_theta = np.sin(degree)
+
+        if self.dim == 2:
+            # 2D rotation matrix
+            R = np.array([[cos_theta, -sin_theta],
+                          [sin_theta,  cos_theta]])
+        elif self.dim == 3:
+            # 3D rotation matrix around Z-axis
+            R = np.array([[cos_theta, -sin_theta, 0],
+                          [sin_theta,  cos_theta, 0],
+                          [0,           0,          1]])
+        else:
+            msg = f"Unsupported tensor dimension for rotation: {self.dim}. Only 2D and 3D are supported."
+            self.history.add_record(f"Error: {msg}", level='error')
+            raise ValueError(msg)
+
+        # Pre-calculate transpose for efficiency
+        R_transpose = R.T
+
+        # Apply rotation to each tensor slice over time
+        for i in range(self.data.shape[2]):
+            self.data[:, :, i] = R @ self.data[:, :, i] @ R_transpose
+
+        self.history.add_record(f"Rotated tensor data by {np.degrees(degree):.2f} degrees.", level="INFO")
