@@ -81,7 +81,7 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
     builder.set_matrix_config(MatrixConfig(name="matrix", materials=matrix_mats))
 
     center_x_val = domain_length / 2.0
-    srv_length_ft = kwargs.get('srv_length_ft', 400)
+    srv_length_ft = kwargs.get('srv_length_ft', 280)
     srv_height_ft = kwargs.get('srv_height_ft', 20)  # <- Changed here. From 50 to 20
     hf_length_ft = kwargs.get('hf_length_ft', 250)
     hf_height_ft = kwargs.get('hf_height_ft', 0.2)
@@ -139,7 +139,7 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
     # "data/fiberis_format/post_processing/injection_pressure_full_profile.npz" <- injection pressure profile
     # Load gauge data for MOOSE, I have already packed the data in fiberis format.
     gauge_data_for_moose = Data1DGauge()
-    gauge_data_for_moose.load_npz("data/fiberis_format/post_processing/injection_pressure_full_profile.npz")
+    gauge_data_for_moose.load_npz("data_fervo/fiberis_format/pressure_data/Bearskin3PA_Stage_28.npz")
     gauge_data_for_moose.data = 6894.76 * gauge_data_for_moose.data  # Convert psi to Pa
 
     builder.add_piecewise_function_from_data1d(name="injection_pressure_func", source_data1d=gauge_data_for_moose)
@@ -155,77 +155,110 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
 
     # Add post-processors to model builder
     # This part is from baseline_model_builder.py (v1) which provides better post-processing options.
-    shift_val_ft = kwargs.get('monitoring_point_shift_ft', 80)
+    shift_list_ft = kwargs.get('shift_list_ft', [80.0])
+    angle = kwargs.get('angle', 30.0)  # Angle in degrees for clockwise rotation
 
-    # Center point sampler, pressure
-    builder.add_postprocessor(
-        PointValueSamplerConfig(
-            name="hf_center_dispx_sampler",
-            variable="disp_x",
-            point=(center_x_val, frac_y_center, 0)
+    for shift_val_ft in shift_list_ft:
+        # Center point sampler, pressure
+        builder.add_postprocessor(
+            PointValueSamplerConfig(
+                name=f"hf_center_dispx_sampler_{shift_val_ft}ft",
+                variable="disp_x",
+                point=(center_x_val, frac_y_center, 0)
+            )
         )
-    )
 
-    # Center point sampler, strain_yy
-    builder.add_postprocessor(
-        PointValueSamplerConfig(
-            name="hf_center_dispy_sampler",
-            variable="disp_y",
-            point=(center_x_val, frac_y_center, 0)
+        # Center point sampler, strain_yy
+        builder.add_postprocessor(
+            PointValueSamplerConfig(
+                name=f"hf_center_dispy_sampler_{shift_val_ft}ft",
+                variable="disp_y",
+                point=(center_x_val, frac_y_center, 0)
+            )
         )
-    )
 
-    # Monitoring point sampler, pressure
-    builder.add_postprocessor(
-        PointValueSamplerConfig(
-            name="monitor_point_dispx_sampler",
-            variable="disp_x",
-            point=(center_x_val + shift_val_ft * conversion_factor, frac_y_center, 0)
+        # Monitoring point sampler, pressure
+        builder.add_postprocessor(
+            PointValueSamplerConfig(
+                name=f"monitor_point_dispx_sampler_{shift_val_ft}ft",
+                variable="disp_x",
+                point=(center_x_val + shift_val_ft * conversion_factor, frac_y_center, 0)
+            )
         )
-    )
 
-    # Monitoring point sampler, strain_yy
-    builder.add_postprocessor(
-        PointValueSamplerConfig(
-            name="monitor_point_dispy_sampler",
-            variable="disp_y",
-            point=(center_x_val + shift_val_ft * conversion_factor, frac_y_center, 0)
+        # Monitoring point sampler, strain_yy
+        builder.add_postprocessor(
+            PointValueSamplerConfig(
+                name=f"monitor_point_dispy_sampler_{shift_val_ft}ft",
+                variable="disp_y",
+                point=(center_x_val + shift_val_ft * conversion_factor, frac_y_center, 0)
+            )
         )
-    )
 
-    # Line sampler along the fracture, pressure
-    builder.add_postprocessor(
-        LineValueSamplerConfig(
-            name="fiber_pressure_sampler",
-            variable="pp",
-            start_point=(center_x_val + shift_val_ft * conversion_factor,
-                         domain_bounds[0] + kwargs.get("start_offset_y", 20) * conversion_factor, 0),
-            end_point=(center_x_val + shift_val_ft * conversion_factor,
-                       domain_bounds[1] - kwargs.get("end_offset_y", 20) * conversion_factor, 0),
-            num_points=kwargs.get("num_fiber_points", 200),
-            other_params={'sort_by': 'y'}
-        )
-    )
+        # Line sampler calculation
+        x_center = center_x_val + shift_val_ft * conversion_factor
+        y_start = domain_bounds[0] + kwargs.get("start_offset_y", 20) * conversion_factor
+        y_end = domain_bounds[1] - kwargs.get("end_offset_y", 20) * conversion_factor
+        y_center = (y_start + y_end) / 2.0
 
-    # Line sampler along the fracture, strain components
-    builder.add_postprocessor(
-        LineValueSamplerConfig(
-            name="fiber_strain_sampler",
-            variable="strain_xx strain_yy strain_xy",
-            start_point=(center_x_val + shift_val_ft * conversion_factor,
-                         domain_bounds[0] + kwargs.get("start_offset_y", 20) * conversion_factor, 0),
-            end_point=(center_x_val + shift_val_ft * conversion_factor,
-                       domain_bounds[1] - kwargs.get("end_offset_y", 20) * conversion_factor, 0),
-            num_points=kwargs.get("num_fiber_points", 200),
-            other_params={'sort_by': 'y'}
+        theta = np.deg2rad(angle)
+        cos_theta = np.cos(theta)
+        sin_theta = np.sin(theta)
+
+        # Rotate start point
+        y_start_rel = y_start - y_center
+        x_start_rot = x_center + y_start_rel * sin_theta
+        y_start_rot = y_center + y_start_rel * cos_theta
+
+        # Rotate end point
+        y_end_rel = y_end - y_center
+        x_end_rot = x_center + y_end_rel * sin_theta
+        y_end_rot = y_center + y_end_rel * cos_theta
+
+        # Boundary checks
+        x_min_bound, x_max_bound = 10, domain_length - 10
+        y_min_bound, y_max_bound = domain_bounds[0] + 10, domain_bounds[1] - 10
+
+        start_point = (
+            np.clip(x_start_rot, x_min_bound, x_max_bound),
+            np.clip(y_start_rot, y_min_bound, y_max_bound),
+            0
         )
-    )
+        end_point = (
+            np.clip(x_end_rot, x_min_bound, x_max_bound),
+            np.clip(y_end_rot, y_min_bound, y_max_bound),
+            0
+        )
+
+        # Line sampler along the fracture, pressure
+        builder.add_postprocessor(
+            LineValueSamplerConfig(
+                name=f"fiber_pressure_sampler_{shift_val_ft}ft",
+                variable="pp",
+                start_point=start_point,
+                end_point=end_point,
+                num_points=kwargs.get("num_fiber_points", 200),
+                other_params={'sort_by': 'y'}
+            )
+        )
+
+        # Line sampler along the fracture, strain components
+        builder.add_postprocessor(
+            LineValueSamplerConfig(
+                name=f"fiber_strain_sampler_{shift_val_ft}ft",
+                variable="strain_xx strain_yy strain_xy",
+                start_point=start_point,
+                end_point=end_point,
+                num_points=kwargs.get("num_fiber_points", 200),
+                other_params={'sort_by': 'y'}
+            )
+        )
 
     # Time sequence stepper
     total_time = gauge_data_for_moose.taxis[-1] - gauge_data_for_moose.taxis[0]
     # Down sample two dataframes to speed up the simulation.
     timestepper_profile = Data1DGauge()
-    timestepper_profile.load_npz("data/fiberis_format/post_processing/timestepper_profile.npz")
+    timestepper_profile.load_npz("data_fervo/fiberis_format/post_processing/Bearskin3PA_Stage_28_timestep_profile.npz")
 
     dt_control_func = TimeSequenceStepper()
     dt_control_func.from_data1d(timestepper_profile)
