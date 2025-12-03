@@ -196,8 +196,8 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
     # Line sampler along the fracture, pressure
     builder.add_postprocessor(
         LineValueSamplerConfig(
-            name="fiber_dispx_sampler",
-            variable="disp_x",
+            name="fiber_pressure_sampler",
+            variable="pp",
             start_point=(center_x_val + shift_val_ft * conversion_factor,
                          domain_bounds[0] + kwargs.get("start_offset_y", 20) * conversion_factor, 0),
             end_point=(center_x_val + shift_val_ft * conversion_factor,
@@ -207,11 +207,11 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
         )
     )
 
-    # Line sampler along the fracture, strain_yy
+    # Line sampler along the fracture, strain components
     builder.add_postprocessor(
         LineValueSamplerConfig(
-            name="fiber_dispy_sampler",
-            variable="disp_y",
+            name="fiber_strain_sampler",
+            variable="strain_xx strain_yy strain_xy",
             start_point=(center_x_val + shift_val_ft * conversion_factor,
                          domain_bounds[0] + kwargs.get("start_offset_y", 20) * conversion_factor, 0),
             end_point=(center_x_val + shift_val_ft * conversion_factor,
@@ -247,7 +247,7 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
 def post_processor_info_extractor(**kwargs) -> List[Data2D]:
     """
     This function extracts post-processor information from the simulation results.
-    Will return two Data2D objects: one for pressure, one for strain_yy.
+    Will return four Data2D objects: one for pressure, and one for each strain component (xx, yy, xy).
 
     :param output_dir: The directory containing the MOOSE output CSV files.
     :return: A list of Data2D objects representing the extracted post-processor data.
@@ -260,22 +260,41 @@ def post_processor_info_extractor(**kwargs) -> List[Data2D]:
     max_processor_id, _ = vector_reader.get_max_indices(output_dir)
 
     pressure_data2d = None
-    strain_data2d = None
+    strain_xx_data2d = None
+    strain_yy_data2d = None
+    strain_xy_data2d = None
 
     for i in range(max_processor_id + 1):
+        # Check sampler name by reading first variable
         vector_reader.read(directory=output_dir, post_processor_id=i, variable_index=1)
 
         if "fiber_pressure_sampler" in vector_reader.sampler_name:
             pressure_data2d = vector_reader.to_analyzer()
-        elif "fiber_strain_yy_sampler" in vector_reader.sampler_name:
-            strain_data2d = vector_reader.to_analyzer()
+            pressure_data2d.name = "pressure"
+        elif "fiber_strain_sampler" in vector_reader.sampler_name:
+            # It's the strain sampler, now extract all components
+            vector_reader.read(directory=output_dir, post_processor_id=i, variable_index=1)
+            strain_xx_data2d = vector_reader.to_analyzer()
+            strain_xx_data2d.name = "strain_xx"
+
+            vector_reader.read(directory=output_dir, post_processor_id=i, variable_index=2)
+            strain_yy_data2d = vector_reader.to_analyzer()
+            strain_yy_data2d.name = "strain_yy"
+
+            vector_reader.read(directory=output_dir, post_processor_id=i, variable_index=3)
+            strain_xy_data2d = vector_reader.to_analyzer()
+            strain_xy_data2d.name = "strain_xy"
 
     if pressure_data2d is None:
         raise FileNotFoundError("Could not find and extract 'fiber_pressure_sampler' data.")
-    if strain_data2d is None:
-        raise FileNotFoundError("Could not find and extract 'fiber_strain_yy_sampler' data.")
+    if strain_xx_data2d is None:
+        raise FileNotFoundError("Could not find and extract 'fiber_strain_sampler' (strain_xx) data.")
+    if strain_yy_data2d is None:
+        raise FileNotFoundError("Could not find and extract 'fiber_strain_sampler' (strain_yy) data.")
+    if strain_xy_data2d is None:
+        raise FileNotFoundError("Could not find and extract 'fiber_strain_sampler' (strain_xy) data.")
 
-    return [pressure_data2d, strain_data2d]
+    return [pressure_data2d, strain_xx_data2d, strain_yy_data2d, strain_xy_data2d]
 
 if __name__ == "__main__":
     print("Don't run this script directly. It is meant to be imported as a module.\n--Shenyao")

@@ -76,8 +76,8 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
     fracture_perm_str = f"{fracture_perm} 0 0 0 {fracture_perm} 0 0 0 {fracture_perm}"
 
     # Material properties
-    matrix_mats = ZoneMaterialProperties(porosity=0.01, permeability=matrix_perm_str)
-    srv_mats = ZoneMaterialProperties(porosity=0.1, permeability=srv_perm_str)
+    matrix_mats = ZoneMaterialProperties(porosity=0.03, permeability=matrix_perm_str)
+    srv_mats = ZoneMaterialProperties(porosity=0.032, permeability=srv_perm_str) # <- Changed here. Physically more reasonable.
     fracture_mats = ZoneMaterialProperties(porosity=0.16, permeability=fracture_perm_str)
 
     builder.set_matrix_config(MatrixConfig(name="matrix", materials=matrix_mats))
