@@ -84,7 +84,7 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
 
     center_x_val = domain_length / 2.0
     srv_length_ft = kwargs.get('srv_length_ft', 400)
-    srv_height_ft = kwargs.get('srv_height_ft', 20)  # <- Changed here. From 50 to 20
+    srv_height_ft = kwargs.get('srv_height_ft', 5)  # <- Changed here. From 50 to 20
     hf_length_ft = kwargs.get('hf_length_ft', 250)
     hf_height_ft = kwargs.get('hf_height_ft', 0.2)
 
