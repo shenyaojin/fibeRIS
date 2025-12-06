@@ -272,7 +272,7 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
     )
 
     builder.add_preconditioning_block(active_preconditioner='mumps')
-    builder.add_outputs_block(exodus=False, csv=True, exodus_execute_on='FINAL')
+    builder.add_outputs_block(exodus=True, csv=True, exodus_execute_on='FINAL')
 
     return builder
 
