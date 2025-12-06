@@ -1189,13 +1189,42 @@ class ModelBuilder:
         print(f"Info: Added [Preconditioning] block with '{active_preconditioner}' active.")
         return self
 
-    def add_outputs_block(self, exodus: bool = True, csv: bool = True, **kwargs) -> 'ModelBuilder':
+    def add_outputs_block(self, exodus: bool = True, csv: bool = True, exodus_execute_on: Optional[str] = None, **kwargs) -> 'ModelBuilder':
         """
-        Adds a standard [Outputs] block. <- need to add customization options here.
+        Adds a standard [Outputs] block to the MOOSE input file, allowing for configurable
+        Exodus and CSV output.
+
+        This method ensures that Exodus output can be precisely controlled, allowing
+        users to specify when spatial results (mesh + variables) are written (e.g.,
+        only at the initial or final simulation step, or at specific intervals).
+
+        :param exodus: If True, an Exodus output block will be included. Defaults to True.
+        :param csv: If True, a CSV output block for samplers will be included. Defaults to True.
+        :param exodus_execute_on: Optional string to specify when the Exodus output should be
+                                  executed. This directly maps to MOOSE's `execute_on` parameter
+                                  for the Exodus block. Examples: 'INITIAL', 'FINAL',
+                                  'INITIAL FINAL', 'timestep_end'. If not provided,
+                                  Exodus will output at every step (MOOSE default).
+        :param kwargs: Additional parameters to be added directly to the main [Outputs] block.
+        :return: self, allowing method chaining.
         """
         outputs_block = self._get_or_create_toplevel_moose_block("Outputs")
+
+        # Always manage exodus through a sub-block for consistency.
+        # Remove the simple 'exodus = ...' parameter if it exists from previous calls.
+        if 'exodus' in outputs_block.params:
+            del outputs_block.params['exodus']
+
+        # Remove existing exodus and csv blocks to replace them with the current configuration.
+        outputs_block.sub_blocks = [sb for sb in outputs_block.sub_blocks if sb.block_name not in ['exodus', 'csv']]
+
         if exodus:
-            outputs_block.add_param("exodus", True)
+            exodus_block = MooseBlock("exodus", block_type="Exodus")
+            if exodus_execute_on:
+                # e.g., 'INITIAL', 'FINAL', 'INITIAL FINAL'
+                exodus_block.add_param("execute_on", exodus_execute_on)
+            outputs_block.add_sub_block(exodus_block)
+
         if csv:
             csv_block = MooseBlock("csv", block_type="CSV")
             outputs_block.add_sub_block(csv_block)
