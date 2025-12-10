@@ -36,6 +36,23 @@ class ZoneMaterialProperties:
         self.youngs_modulus: Optional[float] = youngs_modulus
         self.poissons_ratio: Optional[float] = poissons_ratio
 
+class InitialConditionConfig:
+    """
+    Configuration for a single Initial Condition block within MOOSE.
+    """
+    def __init__(self,
+                 name: str,
+                 ic_type: str, # MOOSE type of the initial condition
+                 variable: str, # The variable to which this IC applies
+                 params: Optional[Dict[str, Any]] = None):
+        """
+        Initializes the configuration for an initial condition.
+        """
+        self.name: str = name
+        self.ic_type: str = ic_type
+        self.variable: str = variable
+        self.params: Dict[str, Any] = params if params is not None else {}
+
 # +++ Matrix Configuration +++
 class MatrixConfig:
     """
@@ -43,16 +60,19 @@ class MatrixConfig:
     """
     def __init__(self,
                  name: str,
-                 materials: ZoneMaterialProperties):
+                 materials: ZoneMaterialProperties,
+                 initial_conditions: Optional[List[InitialConditionConfig]] = None):
         """
         Initializes the MatrixConfig.
 
         Args:
             name (str): The name for the matrix block (e.g., "matrix").
             materials (ZoneMaterialProperties): An object containing the material properties for the matrix.
+            initial_conditions (Optional[List[InitialConditionConfig]], optional): List of initial conditions for this zone.
         """
         self.name: str = name
         self.materials: ZoneMaterialProperties = materials
+        self.initial_conditions: List[InitialConditionConfig] = initial_conditions if initial_conditions is not None else []
 
 
 # +++ HydraulicFractureConfig +++
@@ -67,6 +87,7 @@ class HydraulicFractureConfig:
                  center_x: float,
                  center_y: float,
                  materials: ZoneMaterialProperties, # <-- Replaces individual material properties
+                 initial_conditions: Optional[List[InitialConditionConfig]] = None, # <-- New attribute
                  orientation_angle: float = 0.0, # Degrees, relative to X-axis
                  mesh_length_param: Optional[float] = None, # E.g., target element size or refinement level
                  mesh_height_param: Optional[float] = None): # E.g., target element size or refinement level
@@ -80,6 +101,7 @@ class HydraulicFractureConfig:
             center_x (float): X-coordinate of the fracture's center point.
             center_y (float): Y-coordinate of the fracture's center point.
             materials (ZoneMaterialProperties): An object containing material properties for the fracture.
+            initial_conditions (Optional[List[InitialConditionConfig]], optional): List of initial conditions for this zone.
             orientation_angle (float, optional): Orientation angle of the fracture in degrees. Defaults to 0.0.
             mesh_length_param (Optional[float], optional): Mesh refinement parameter along the fracture's length.
             mesh_height_param (Optional[float], optional): Mesh refinement parameter along the fracture's height/aperture.
@@ -90,6 +112,7 @@ class HydraulicFractureConfig:
         self.center_x: float = center_x
         self.center_y: float = center_y
         self.materials: ZoneMaterialProperties = materials # <-- New attribute
+        self.initial_conditions: List[InitialConditionConfig] = initial_conditions if initial_conditions is not None else []
         self.orientation_angle: float = orientation_angle
         self.mesh_length_param: Optional[float] = mesh_length_param
         self.mesh_height_param: Optional[float] = mesh_height_param
@@ -111,6 +134,7 @@ class SRVConfig:
                  center_x: float,
                  center_y: float,
                  materials: ZoneMaterialProperties, # <-- Replaces individual material properties
+                 initial_conditions: Optional[List[InitialConditionConfig]] = None, # <-- New attribute
                  mesh_length_param: Optional[float] = None, # E.g., target element size or refinement level along length
                  mesh_height_param: Optional[float] = None): # E.g., target element size or refinement level along height
         """
@@ -123,6 +147,7 @@ class SRVConfig:
             center_x (float): X-coordinate of the SRV zone's center point.
             center_y (float): Y-coordinate of the SRV zone's center point.
             materials (ZoneMaterialProperties): An object containing material properties for the SRV.
+            initial_conditions (Optional[List[InitialConditionConfig]], optional): List of initial conditions for this zone.
             mesh_length_param (Optional[float], optional): Mesh size or refinement parameter along the SRV zone's length.
             mesh_height_param (Optional[float], optional): Mesh size or refinement parameter along the SRV zone's height.
         """
@@ -132,6 +157,7 @@ class SRVConfig:
         self.center_x: float = center_x
         self.center_y: float = center_y
         self.materials: ZoneMaterialProperties = materials # <-- New attribute
+        self.initial_conditions: List[InitialConditionConfig] = initial_conditions if initial_conditions is not None else []
         self.mesh_length_param: Optional[float] = mesh_length_param
         self.mesh_height_param: Optional[float] = mesh_height_param
 

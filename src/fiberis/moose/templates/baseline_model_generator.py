@@ -12,7 +12,7 @@ from fiberis.analyzer.Data2D.core2D import Data2D
 from typing import List
 from fiberis.moose.config import (
     MatrixConfig, SRVConfig, HydraulicFractureConfig, ZoneMaterialProperties, SimpleFluidPropertiesConfig,
-    PointValueSamplerConfig, LineValueSamplerConfig, TimeSequenceStepper
+    PointValueSamplerConfig, LineValueSamplerConfig, TimeSequenceStepper, InitialConditionConfig
 )
 from fiberis.moose.model_builder import ModelBuilder
 from fiberis.io.reader_moose_vpp import MOOSEVectorPostProcessorReader
@@ -62,12 +62,12 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
         domain_bounds=domain_bounds,
         domain_length=domain_length,
         nx=kwargs.get('nx', 200),
-        ny_per_layer_half=kwargs.get('ny_per_layer_half', 80),
-        bias_y=kwargs.get('bias_y', 1.2)
+        ny_per_layer_half=kwargs.get('ny_per_layer_half', 100),
+        bias_y=kwargs.get('bias_y', 1.1)
     )
 
-    matrix_perm = kwargs.get('matrix_perm', 1e-18)
-    srv_perm = kwargs.get('srv_perm', 1e-15)
+    matrix_perm = kwargs.get('matrix_perm', 1e-20)
+    srv_perm = kwargs.get('srv_perm', 1e-16)
     fracture_perm = kwargs.get('fracture_perm', 1e-13)
 
     # The tensor format for permeability in fiberis:
@@ -80,7 +80,24 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
     srv_mats = ZoneMaterialProperties(porosity=0.032, permeability=srv_perm_str) # <- Changed here. Physically more reasonable.
     fracture_mats = ZoneMaterialProperties(porosity=0.16, permeability=fracture_perm_str)
 
-    builder.set_matrix_config(MatrixConfig(name="matrix", materials=matrix_mats))
+    # Define Initial Conditions
+    initial_pressure_val = kwargs.get('initial_pressure', 5.17E7)
+    initial_pressure_val_srv = kwargs.get('initial_pressure_srv', 1.7E7)
+    pressure_ic = InitialConditionConfig(
+        name="initial_pressure",
+        ic_type="ConstantIC",
+        variable="pp",
+        params={"value": initial_pressure_val}
+    )
+
+    pressure_ic_srv_frac = InitialConditionConfig(
+        name="initial_pressure_srv_frac",
+        ic_type="ConstantIC",
+        variable="pp",
+        params={"value": initial_pressure_val_srv}
+    )
+
+    builder.set_matrix_config(MatrixConfig(name="matrix", materials=matrix_mats, initial_conditions=[pressure_ic]))
 
     center_x_val = domain_length / 2.0
     srv_length_ft = kwargs.get('srv_length_ft', 400)
@@ -90,10 +107,10 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
 
     geometries = [
         SRVConfig(name="srv", length=srv_length_ft * conversion_factor, height=srv_height_ft * conversion_factor,
-                  center_x=center_x_val, center_y=frac_y_center, materials=srv_mats),
+                  center_x=center_x_val, center_y=frac_y_center, materials=srv_mats, initial_conditions=[pressure_ic_srv_frac]),
         HydraulicFractureConfig(name="hf", length=hf_length_ft * conversion_factor,
                                 height=hf_height_ft * conversion_factor, center_x=center_x_val,
-                                center_y=frac_y_center, materials=fracture_mats)
+                                center_y=frac_y_center, materials=fracture_mats, initial_conditions=[pressure_ic_srv_frac])
     ]
 
     sorted_geometries = sorted(geometries, key=lambda x: x.height, reverse=True)
@@ -111,7 +128,7 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
                                  coordinates=(center_x_val, frac_y_center, 0))
 
     builder.add_variables([
-        {"name": "pp", "params": {"initial_condition": kwargs.get('initial_pressure', 5.17E7)}},
+        "pp",
         {"name": "disp_x", "params": {"initial_condition": 0}},
         {"name": "disp_y", "params": {"initial_condition": 0}}
     ])
@@ -141,7 +158,8 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
     # "data/fiberis_format/post_processing/injection_pressure_full_profile.npz" <- injection pressure profile
     # Load gauge data for MOOSE, I have already packed the data in fiberis format.
     gauge_data_for_moose = Data1DGauge()
-    gauge_data_for_moose.load_npz("data/fiberis_format/post_processing/injection_pressure_full_profile.npz")
+    gauge_data_for_moose.load_npz("data/fiberis_format/prod/gauges/pressure_g1.npz")
+    gauge_data_for_moose.adaptive_downsample(130)
     gauge_data_for_moose.data = 6894.76 * gauge_data_for_moose.data  # Convert psi to Pa
 
     builder.add_piecewise_function_from_data1d(name="injection_pressure_func", source_data1d=gauge_data_for_moose)
@@ -226,8 +244,7 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
     # Time sequence stepper
     total_time = gauge_data_for_moose.taxis[-1] - gauge_data_for_moose.taxis[0]
     # Down sample two dataframes to speed up the simulation.
-    timestepper_profile = Data1DGauge()
-    timestepper_profile.load_npz("data/fiberis_format/post_processing/timestepper_profile.npz")
+    timestepper_profile = gauge_data_for_moose.copy()
 
     dt_control_func = TimeSequenceStepper()
     dt_control_func.from_data1d(timestepper_profile)
@@ -240,11 +257,11 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
         stepper_config=dt_control_func
     )
 
+    builder.add_initial_conditions_from_configs()
     builder.add_preconditioning_block(active_preconditioner='mumps')
-    builder.add_outputs_block(exodus=False, csv=True)
+    builder.add_outputs_block(exodus=False, csv=True, exodus_execute_on='FINAL')
 
     return builder
-
 
 def post_processor_info_extractor(**kwargs) -> List[Data2D]:
     """

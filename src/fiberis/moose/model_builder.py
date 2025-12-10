@@ -36,6 +36,36 @@ class ModelBuilder:
         self.geometry_info: Dict[str, Any] = {}
         self.postprocessor_info: Dict[str, Any] = {}
 
+    def add_initial_conditions_from_configs(self) -> 'ModelBuilder':
+        """
+        Generates the [ICs] block from the initial_conditions
+        specified in all Matrix, SRV, and HydraulicFracture configs.
+        """
+        ics_main_block = self._get_or_create_toplevel_moose_block("ICs")
+        all_zone_configs = ([self.matrix_config] if self.matrix_config else []) + \
+                           self.srv_configs + self.fracture_configs
+
+        for zone_config in all_zone_configs:
+            if not zone_config or not hasattr(zone_config, 'initial_conditions'):
+                continue
+
+            for ic_config in zone_config.initial_conditions:
+                # The name of the IC block itself should be unique
+                ic_sub_block = MooseBlock(f"{ic_config.name}_{zone_config.name}", block_type=ic_config.ic_type)
+                ic_sub_block.add_param("variable", ic_config.variable)
+
+                # Associate this IC with the specific zone/block name
+                ic_sub_block.add_param("block", zone_config.name)
+
+                for p_name, p_val in ic_config.params.items():
+                    ic_sub_block.add_param(p_name, p_val)
+                ics_main_block.add_sub_block(ic_sub_block)
+
+        if ics_main_block.sub_blocks:
+            print(f"Info: Added {len(ics_main_block.sub_blocks)} initial conditions from configs.")
+        return self
+
+
     def _dump_recursive_to_string(self, block: 'MooseBlock', lines: List[str], prefix: str = ""):
         """Helper for recursively building the block structure string."""
         block_path_str = f"{prefix}[{block.block_name}]"
