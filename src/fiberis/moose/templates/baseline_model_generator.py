@@ -48,6 +48,18 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
     # Define default parameters
     conversion_factor = 0.3048  # feet to meters
 
+    # "data/fiberis_format/post_processing/injection_pressure_full_profile.npz" <- injection pressure profile
+    # Load gauge data for MOOSE, I have already packed the data in fiberis format.
+    gauge_data_for_moose = Data1DGauge()
+    gauge_data_for_moose.load_npz("data/fiberis_format/prod/gauges/pressure_g1.npz")
+
+    # Load DSS data so that I can crop the time range accordingly.
+    DSS_data = Data2D()
+    DSS_data.load_npz("data/fiberis_format/s_well/dss_data/Mariner 14x-36-POW-S - RFS strain change.npz")
+    gauge_data_for_moose.select_time(DSS_data.start_time, DSS_data.get_end_time())
+    gauge_data_for_moose.adaptive_downsample(130)
+    gauge_data_for_moose.data = 6894.76 * gauge_data_for_moose.data  # Convert psi to Pa
+
     # Start building the model
     builder = ModelBuilder(project_name=kwargs.get("project_name", "BaselineModel"))
     domain_bounds = (- kwargs.get('model_width', 200.0 * conversion_factor),
@@ -82,7 +94,7 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
 
     # Define Initial Conditions
     initial_pressure_val = kwargs.get('initial_pressure', 5.17E7)
-    initial_pressure_val_srv = kwargs.get('initial_pressure_srv', 1.7E7)
+    initial_pressure_val_srv = kwargs.get('initial_pressure_srv', gauge_data_for_moose.data[0])
     pressure_ic = InitialConditionConfig(
         name="initial_pressure",
         ic_type="ConstantIC",
@@ -97,7 +109,7 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
         params={"value": initial_pressure_val_srv}
     )
 
-    builder.set_matrix_config(MatrixConfig(name="matrix", materials=matrix_mats, initial_conditions=[pressure_ic]))
+    builder.set_matrix_config(MatrixConfig(name="matrix", materials=matrix_mats, initial_conditions=[pressure_ic_srv_frac])) # changed here
 
     center_x_val = domain_length / 2.0
     srv_length_ft = kwargs.get('srv_length_ft', 400)
@@ -155,12 +167,6 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
         solid_bulk_compliance=2E-11
     )
 
-    # "data/fiberis_format/post_processing/injection_pressure_full_profile.npz" <- injection pressure profile
-    # Load gauge data for MOOSE, I have already packed the data in fiberis format.
-    gauge_data_for_moose = Data1DGauge()
-    gauge_data_for_moose.load_npz("data/fiberis_format/prod/gauges/pressure_g1.npz")
-    gauge_data_for_moose.adaptive_downsample(130)
-    gauge_data_for_moose.data = 6894.76 * gauge_data_for_moose.data  # Convert psi to Pa
 
     builder.add_piecewise_function_from_data1d(name="injection_pressure_func", source_data1d=gauge_data_for_moose)
 
@@ -260,6 +266,11 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
     builder.add_initial_conditions_from_configs()
     builder.add_preconditioning_block(active_preconditioner='mumps')
     builder.add_outputs_block(exodus=False, csv=True, exodus_execute_on='FINAL')
+
+    # Plot gauge data for reference
+    fig, ax = plt.subplots()
+    gauge_data_for_moose.plot(ax=ax, use_timestamp=True)
+    plt.show()
 
     return builder
 
