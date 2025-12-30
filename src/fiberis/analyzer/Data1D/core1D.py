@@ -59,6 +59,7 @@ class Data1D:
         Raises:
             FileNotFoundError: If the specified file does not exist.
             KeyError: If the .npz file is missing one of the required keys.
+            ValueError: If start_time format is unsupported.
         """
         self.history.add_record(f"Attempting to load data from NPZ file: {filename}", level="INFO")
         if not os.path.exists(filename):
@@ -67,16 +68,15 @@ class Data1D:
 
         try:
             with np.load(filename, allow_pickle=True) as data_structure:
-                if 'data' not in data_structure:
-                    raise KeyError("'data' key is missing from the NPZ file.")
-                if 'taxis' not in data_structure:
-                    raise KeyError("'taxis' key is missing from the NPZ file.")
-                if 'start_time' not in data_structure:
-                    raise KeyError("'start_time' key is missing from the NPZ file.")
+                required_keys = ['data', 'taxis', 'start_time']
+                missing_keys = [key for key in required_keys if key not in data_structure]
+                
+                if missing_keys:
+                    raise KeyError(f"Missing keys in NPZ file: {', '.join(missing_keys)}")
 
                 self.data = data_structure['data'].astype(float)
                 self.taxis = data_structure['taxis'].astype(float)
-                start_time_raw = data_structure['start_time'].item() # .item() extracts the scalar value
+                start_time_raw = data_structure['start_time'].item()
                 self.history.add_record("Converted data and taxis to float type.", level="INFO")
 
                 if isinstance(start_time_raw, str):
@@ -92,7 +92,6 @@ class Data1D:
 
         except Exception as e:
             self.history.add_record(f"An unexpected error occurred while loading {filename}: {e}", level="ERROR")
-            # Re-raise the exception to ensure the calling code knows about the failure.
             raise
 
     def crop(self, start: Union[datetime.datetime, float, int], end: Union[datetime.datetime, float, int]) -> None:
@@ -117,14 +116,17 @@ class Data1D:
             self.history.add_record("Error: Cannot crop, data or taxis is not loaded.", level="ERROR")
             raise ValueError("Data or taxis is not loaded. Load data first.")
 
-        # Convert int to float for uniformity in relative time calculations
-        if isinstance(start, int): start = float(start)
-        if isinstance(end, int): end = float(end)
+        # Normalize inputs to float or datetime
+        start = float(start) if isinstance(start, int) else start
+        end = float(end) if isinstance(end, int) else end
 
         if not (isinstance(start, (datetime.datetime, float)) and isinstance(end, (datetime.datetime, float))):
-            self.history.add_record(f"Error: Invalid types for crop start/end ({type(start)}, {type(end)})",
-                                    level="ERROR")
+            self.history.add_record(f"Error: Invalid types for crop start/end ({type(start)}, {type(end)})", level="ERROR")
             raise TypeError("Start and end must be either datetime.datetime or float (seconds) types.")
+
+        if type(start) != type(end):
+             self.history.add_record(f"Error: Mismatched types for crop start/end ({type(start)}, {type(end)})", level="ERROR")
+             raise TypeError("Start and end must be of the same type (datetime or float).")
 
         if start > end:
             self.history.add_record(f"Error: Crop start time ({start}) is after end time ({end}).", level="ERROR")
@@ -133,25 +135,16 @@ class Data1D:
         # Determine crop window in seconds relative to current self.start_time
         start_seconds: float
         end_seconds: float
-        if isinstance(start, datetime.datetime) and isinstance(end, datetime.datetime):
-            if start < self.start_time:  # Adjust if absolute start is before data's start_time
-                start_seconds = 0.0
-            else:
-                start_seconds = (start - self.start_time).total_seconds()
+        
+        if isinstance(start, datetime.datetime):
+            start_seconds = max(0.0, (start - self.start_time).total_seconds())
             end_seconds = (end - self.start_time).total_seconds()
-        elif isinstance(start, float) and isinstance(end, float):
+        else:
             start_seconds = start
             end_seconds = end
-        else:
-            # This case should be caught by the earlier type check, but as a safeguard:
-            self.history.add_record(
-                f"Error: Mismatched types for crop start/end after conversion ({type(start)}, {type(end)})",
-                level="ERROR")
-            raise TypeError("Start and end must be of the same type (datetime or float).")
 
-        if self.taxis.size == 0:  # No data to crop
-            # Update start_time to the beginning of the (empty) crop window
-            self.start_time += datetime.timedelta(seconds=start_seconds)  # start_seconds is already float
+        if self.taxis.size == 0:
+            self.start_time += datetime.timedelta(seconds=start_seconds)
             self.history.add_record(
                 f"Cropped an already empty dataset. Start time adjusted. Window: {start_seconds}s to {end_seconds}s.",
                 level="WARNING")
@@ -160,32 +153,24 @@ class Data1D:
         # Find indices within the crop window
         ind = (self.taxis >= start_seconds) & (self.taxis <= end_seconds)
 
-        actual_crop_start_offset_seconds: float  # Ensure this is treated as float
         if not np.any(ind):
-            # No data falls within the crop window
             self.data = np.array([])
             self.taxis = np.array([])
-            # New start_time is the beginning of the (now empty) crop window
-            self.start_time += datetime.timedelta(seconds=start_seconds)  # start_seconds is already float
+            self.start_time += datetime.timedelta(seconds=start_seconds)
             self.history.add_record(
                 f"Cropped to an empty dataset. Window: {start_seconds}s to {end_seconds}s rel. to original start.",
                 level="INFO")
         else:
-            # Determine the first time point in the original taxis that is part of the crop
             first_taxis_in_crop = self.taxis[ind][0]
-            # Ensure actual_crop_start_offset_seconds is a Python float for timedelta
             actual_crop_start_offset_seconds = float(first_taxis_in_crop)
 
             self.data = self.data[ind]
-            # Adjust taxis to be relative to the new start_time, starting from 0
-            # The subtraction result will match the type of self.taxis[ind] or be promoted if necessary.
             self.taxis = self.taxis[ind] - actual_crop_start_offset_seconds
-            # Ensure taxis remains or becomes float if actual_crop_start_offset_seconds was float
-            if isinstance(actual_crop_start_offset_seconds, float) and not np.issubdtype(self.taxis.dtype, np.floating):
+            
+            if not np.issubdtype(self.taxis.dtype, np.floating):
                 self.taxis = self.taxis.astype(float)
 
-            # Update start_time to reflect the beginning of the successfully cropped data
-            self.start_time += datetime.timedelta(seconds=actual_crop_start_offset_seconds)  # Now uses float
+            self.start_time += datetime.timedelta(seconds=actual_crop_start_offset_seconds)
             self.history.add_record(
                 f"Data cropped. Original window: [{start_seconds:.2f}s, {end_seconds:.2f}s]. New start time: {self.start_time.isoformat()}",
                 level="INFO")
