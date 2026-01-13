@@ -59,7 +59,7 @@ The repository includes a comprehensive test suite based on `pytest`. To run the
 
 ## License
 
-This project is licensed under the WTFPL – Do What the Fuck You Want to Public License. See the `LICENSE` file for details.
+This project is licensed under MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Contact
 

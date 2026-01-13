@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fiberis"
-version = "0.3.0" # Version should be updated when releasing new changes
+version = "0.4.1" # Version should be updated when releasing new changes
 description = "Fiber Reservoir Integrated Simulator"
 readme = "README.md"
 authors = [{ name = "Shenyao Jin", email = "shenyaojin@mines.edu" }]
@@ -19,7 +19,7 @@ classifiers = [
     "Development Status :: 3 - Alpha", # Or "4 - Beta" or "5 - Production/Stable"
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE",
+    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
