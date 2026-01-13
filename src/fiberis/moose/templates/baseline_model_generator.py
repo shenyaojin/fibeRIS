@@ -157,7 +157,7 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
                                                              biot_coefficient=biot_coeff)
     builder.add_porous_flow_effective_stress_coupling_kernel(kernel_name="eff_stress_y", variable="disp_y", component=1,
                                                              biot_coefficient=biot_coeff)
-    builder.add_porous_flow_mass_volumetric_expansion_kernel(kernel_name="mass_exp", variable="pp")
+    # builder.add_porous_flow_mass_volumetric_expansion_kernel(kernel_name="mass_exp", variable="pp") # <- Removed if we need one way coupling.
 
     fluid_property = SimpleFluidPropertiesConfig(name="water", bulk_modulus=2.2E9, viscosity=1.0E-3, density0=1000.0)
     builder.add_fluid_properties_config(fluid_property)
@@ -304,6 +304,18 @@ def post_processor_info_extractor(**kwargs) -> List[Data2D]:
         raise FileNotFoundError("Could not find and extract 'fiber_pressure_sampler' data.")
     if strain_data2d is None:
         raise FileNotFoundError("Could not find and extract 'fiber_strain_yy_sampler' data.")
+
+    # Post-processing:
+    # Remove the first value for it is nan
+    strain_data2d.data = strain_data2d.data[:, 1:]
+    strain_data2d.taxis = strain_data2d.taxis[1:] - strain_data2d.taxis[1]
+
+    pressure_data2d.data = pressure_data2d.data[:, 1:]
+    pressure_data2d.taxis = pressure_data2d.taxis[1:] - pressure_data2d.taxis[1]
+
+    # Only keep the \Delta P
+    pressure_data2d.data = pressure_data2d.data - pressure_data2d.data[0, :]
+    pressure_data2d.history.add_record("Pressure data adjusted to delta P by subtracting initial pressure profile.")
 
     return [pressure_data2d, strain_data2d]
 
