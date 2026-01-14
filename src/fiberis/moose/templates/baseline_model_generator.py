@@ -48,17 +48,24 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
     # Define default parameters
     conversion_factor = 0.3048  # feet to meters
 
+    DSS_data = Data2D()
+    DSS_data.load_npz("data/fiberis_format/s_well/dss_data/Mariner 14x-36-POW-S - RFS strain change.npz")
+
+    # Legacy loading of injection pressure profile
     # "data/fiberis_format/post_processing/injection_pressure_full_profile.npz" <- injection pressure profile
     # Load gauge data for MOOSE, I have already packed the data in fiberis format.
     gauge_data_for_moose = Data1DGauge()
     gauge_data_for_moose.load_npz("data/fiberis_format/prod/gauges/pressure_g1.npz")
-
     # Load DSS data so that I can crop the time range accordingly.
-    DSS_data = Data2D()
-    DSS_data.load_npz("data/fiberis_format/s_well/dss_data/Mariner 14x-36-POW-S - RFS strain change.npz")
+
     gauge_data_for_moose.select_time(DSS_data.start_time, DSS_data.get_end_time())
     gauge_data_for_moose.adaptive_downsample(130)
     gauge_data_for_moose.data = 6894.76 * gauge_data_for_moose.data  # Convert psi to Pa
+
+    # # New loading of injection pressure profile
+    # gauge_data_for_moose = Data1DGauge()
+    # gauge_data_for_moose.load_npz("data/fiberis_format/post_processing/injection_pressure_full_profile.npz")
+    # gauge_data_for_moose.data = gauge_data_for_moose.data * 6894.76  # Convert psi to Pa
 
     # Start building the model
     builder = ModelBuilder(project_name=kwargs.get("project_name", "BaselineModel"))
@@ -93,7 +100,7 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
     fracture_mats = ZoneMaterialProperties(porosity=0.16, permeability=fracture_perm_str)
 
     # Define Initial Conditions
-    initial_pressure_val = kwargs.get('initial_pressure', 5.17E7)
+    initial_pressure_val = kwargs.get('initial_pressure', gauge_data_for_moose.data[0]) # we only care about the pressure change
     initial_pressure_val_srv = kwargs.get('initial_pressure_srv', gauge_data_for_moose.data[0])
     pressure_ic = InitialConditionConfig(
         name="initial_pressure",
@@ -249,8 +256,14 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
 
     # Time sequence stepper
     total_time = gauge_data_for_moose.taxis[-1] - gauge_data_for_moose.taxis[0]
-    # Down sample two dataframes to speed up the simulation.
+
+    # Legacy way of defining time stepper profile
+    # # Down sample two dataframes to speed up the simulation.
     timestepper_profile = gauge_data_for_moose.copy()
+
+    # # new way of defining time stepper profile
+    # timestepper_profile = Data1DGauge()
+    # timestepper_profile.load_npz("data/fiberis_format/post_processing/timestepper_profile.npz")
 
     dt_control_func = TimeSequenceStepper()
     dt_control_func.from_data1d(timestepper_profile)
