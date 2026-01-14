@@ -124,10 +124,6 @@ class Data1D:
             self.history.add_record(f"Error: Invalid types for crop start/end ({type(start)}, {type(end)})", level="ERROR")
             raise TypeError("Start and end must be either datetime.datetime or float (seconds) types.")
 
-        if type(start) != type(end):
-             self.history.add_record(f"Error: Mismatched types for crop start/end ({type(start)}, {type(end)})", level="ERROR")
-             raise TypeError("Start and end must be of the same type (datetime or float).")
-
         if start > end:
             self.history.add_record(f"Error: Crop start time ({start}) is after end time ({end}).", level="ERROR")
             raise ValueError("Start time must be less than or equal to end time.")
