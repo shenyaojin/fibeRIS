@@ -350,15 +350,18 @@ def misfit_calculator(**kwargs) -> float:
     simulated_data: Data2D = kwargs.get('simulated_data')  # The simulated Data2D object
     observed_data: Data2D = kwargs.get('observed_data')  # The observed
     save_path = kwargs.get('save_path', None)
-    simulated_data.daxis = simulated_data.daxis / conversion_factor  # Convert to feet
 
     if simulated_data is None or observed_data is None:
         raise ValueError("Both simulated_data and observed_data must be provided in kwargs")
 
+    # Create a copy of simulated_data to avoid modifying the original object
+    simulated_data_copy = simulated_data.copy()
+    simulated_data_copy.daxis = simulated_data_copy.daxis / conversion_factor  # Convert to feet
+
     # Calculate misfit one channel by one channel.
     total_misfit = 0.0
     start_obs_ind = observed_data_fracture_center_ind - len(weight_matrix) // 2
-    spacing_sim = simulated_data.daxis[1] - simulated_data.daxis[0]
+    spacing_sim = simulated_data_copy.daxis[1] - simulated_data_copy.daxis[0]
     spacing_obs = observed_data.daxis[1] - observed_data.daxis[0]
 
     for iter_chan in range(len(weight_matrix)):
@@ -368,14 +371,14 @@ def misfit_calculator(**kwargs) -> float:
         # Find the corresponding index in the simulated data
         # 1. get the depth value, which can be calculated from sim_fracture_center_ind and spacing
         spacing_chan_frac_obs = obs_depth - observed_data.daxis[observed_data_fracture_center_ind] # Depth difference
-        sim_depth = simulated_data.daxis[sim_fracture_center_ind] + spacing_chan_frac_obs
+        sim_depth = simulated_data_copy.daxis[sim_fracture_center_ind] + spacing_chan_frac_obs
         # 2. extract the data from simulated data
         # Init the data channel from simulated data
-        sim_data_chan = simulated_data.get_value_by_depth(sim_depth)
+        sim_data_chan = simulated_data_copy.get_value_by_depth(sim_depth)
         sim_data_chan_dataframe = Data1DGauge()
         sim_data_chan_dataframe.data = sim_data_chan
-        sim_data_chan_dataframe.taxis = simulated_data.taxis
-        sim_data_chan_dataframe.start_time = simulated_data.start_time
+        sim_data_chan_dataframe.taxis = simulated_data_copy.taxis
+        sim_data_chan_dataframe.start_time = simulated_data_copy.start_time
         sim_data_chan_dataframe.name = "simulated_channel"
 
         # 3. extract the data from observed data
@@ -412,7 +415,110 @@ def misfit_calculator(**kwargs) -> float:
         ax.set_title(f'Channel {iter_chan} at Depth {obs_depth:.2f} ft')
         ax.set_xlabel('Time (s)')
         ax.set_ylabel('Value')
+def misfit_calculator(**kwargs) -> float:
+    """
+    This function calculates the misfit between simulated and observed data.
+
+    :param kwargs: The placeholder for future parameters.
+    :return: the calculated misfit value under the current configuration.
+    """
+    # Parameter set.
+    conversion_factor = 0.3048  # feet to meters
+    weight_matrix = kwargs.get('weight_matrix', np.array([1])) # The weight matrix must be a single value, or
+    # a 1D array with uneven length. The value in the center must be the "center" of HF location.
+    sim_fracture_center_ind: int = kwargs.get('sim_fracture_center_ind', 0) # The index of the fracture center in
+    # the simulated data.
+    observed_data_fracture_center_ind: int = kwargs.get('observed_data_fracture_center_ind', 0) # The index of
+    # the fracture center in the observed data
+    simulated_data: Data2D = kwargs.get('simulated_data')  # The simulated Data2D object
+    observed_data: Data2D = kwargs.get('observed_data')  # The observed
+    save_path = kwargs.get('save_path', None)
+    return_misfit_per_channel = kwargs.get('return_misfit_per_channel', False)
+
+    if simulated_data is None or observed_data is None:
+        raise ValueError("Both simulated_data and observed_data must be provided in kwargs")
+
+    # Create a copy of simulated_data to avoid modifying the original object
+    simulated_data_copy = simulated_data.copy()
+    simulated_data_copy.daxis = simulated_data_copy.daxis / conversion_factor  # Convert to feet
+
+    # Calculate misfit one channel by one channel.
+    total_misfit = 0.0
+    all_channel_misfits = []
+    start_obs_ind = observed_data_fracture_center_ind - len(weight_matrix) // 2
+    spacing_sim = simulated_data_copy.daxis[1] - simulated_data_copy.daxis[0]
+    spacing_obs = observed_data.daxis[1] - observed_data.daxis[0]
+
+    for iter_chan in range(len(weight_matrix)):
+        # Extract the data points in the observed data
+        obs_ind = start_obs_ind + iter_chan
+        obs_depth = observed_data.daxis[obs_ind] # The channel we are calculating the misfit for.
+        # Find the corresponding index in the simulated data
+        # 1. get the depth value, which can be calculated from sim_fracture_center_ind and spacing
+        spacing_chan_frac_obs = obs_depth - observed_data.daxis[observed_data_fracture_center_ind] # Depth difference
+        sim_depth = simulated_data_copy.daxis[sim_fracture_center_ind] + spacing_chan_frac_obs
+        # 2. extract the data from simulated data
+        # Init the data channel from simulated data
+        sim_data_chan = simulated_data_copy.get_value_by_depth(sim_depth)
+        sim_data_chan_dataframe = Data1DGauge()
+        sim_data_chan_dataframe.data = sim_data_chan
+        sim_data_chan_dataframe.taxis = simulated_data_copy.taxis
+        sim_data_chan_dataframe.start_time = simulated_data_copy.start_time
+        sim_data_chan_dataframe.name = "simulated_channel"
+
+        # 3. extract the data from observed data
+        obs_data_chan = observed_data.get_value_by_depth(obs_depth)
+        obs_data_chan_dataframe = Data1DGauge()
+        obs_data_chan_dataframe.data = obs_data_chan
+        obs_data_chan_dataframe.taxis = observed_data.taxis
+        obs_data_chan_dataframe.start_time = observed_data.start_time
+        obs_data_chan_dataframe.name = "observed_channel"
+
+        # 4. calculate misfit for these two channels
+        # Calibrate the two dataframes to have the same time axis
+        sim_data_chan_dataframe.interpolate(new_taxis = obs_data_chan_dataframe.taxis,
+                                            new_start_time = obs_data_chan_dataframe.start_time)
+
+        # Initial time calibration
+        sim_data_chan_dataframe.data -= sim_data_chan_dataframe.data[1]
+
+        # Calculate misfit
+        channel_misfit = np.sum((sim_data_chan_dataframe.data[1:-1] - obs_data_chan_dataframe.data[1:-1]) ** 2)
+        # Weight the misfit
+        weighted_channel_misfit = weight_matrix[iter_chan] * channel_misfit
+        all_channel_misfits.append(weighted_channel_misfit)
+        total_misfit += weighted_channel_misfit
+        # For debugging
+        print(f"Channel {iter_chan}: Depth {obs_depth:.2f} ft, "
+              f"Simulated center index {sim_fracture_center_ind}, Observed center index {observed_data_fracture_center_ind}, "
+              f"Channel misfit {channel_misfit:.4e}, Weighted channel misfit {weighted_channel_misfit:.4e}")
+
+        # Create and save the plot
+        fig, ax = plt.subplots()
+        ax.plot(obs_data_chan_dataframe.taxis, obs_data_chan_dataframe.data, label='Observed')
+        ax.plot(sim_data_chan_dataframe.taxis, sim_data_chan_dataframe.data, label='Simulated')
+        ax.legend()
+        ax.set_title(f'Channel {iter_chan} at Depth {obs_depth:.2f} ft')
+        ax.set_xlabel('Time (s)')
+        ax.set_ylabel('Value')
         misfit_text = f'Channel Misfit: {channel_misfit:.4e}\nWeighted Misfit: {weighted_channel_misfit:.4e}'
+        ax.text(0.05, 0.95, misfit_text, transform=ax.transAxes, fontsize=10,
+                verticalalignment='top', bbox=dict(boxstyle='round,pad=0.5', fc='yellow', alpha=0.5))
+
+        if save_path:
+            if not os.path.isdir(save_path):
+                os.makedirs(save_path, exist_ok=True)
+            plot_filename = os.path.join(save_path, f'misfit_channel_{iter_chan}_depth_{obs_depth:.2f}.png')
+        else:
+            plot_filename = f'misfit_channel_{iter_chan}_depth_{obs_depth:.2f}.png'
+
+        plt.savefig(plot_filename)
+        plt.close(fig)
+
+    if return_misfit_per_channel:
+        return total_misfit, np.array(all_channel_misfits)
+    else:
+        return total_misfit
         ax.text(0.05, 0.95, misfit_text, transform=ax.transAxes, fontsize=10,
                 verticalalignment='top', bbox=dict(boxstyle='round,pad=0.5', fc='yellow', alpha=0.5))
 
