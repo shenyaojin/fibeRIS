@@ -40,8 +40,7 @@ class BearskinPP1D(core.DataIO):
 
         Args:
             file_path (str): The path to the input CSV file.
-            stage_num (Optional[int]): If specified, only data for this stage number will be read.
-                                       Handles negative numbers.
+            stage_num (Optional[int]): This parameter is ignored. The entire file is read.
             **kwargs (Any): Additional keyword arguments (not used).
         """
         self.filename = file_path
@@ -54,48 +53,63 @@ class BearskinPP1D(core.DataIO):
             self.record_log(f"An error occurred while reading the CSV file: {e}", level="ERROR")
             raise
 
+        if stage_num is not None:
+            self.record_log(
+                f"Warning: stage_num={stage_num} was provided but is being ignored. "
+                "The entire file will be read as a single dataset.",
+                level="WARNING"
+            )
+
+        unique_stages = df['STAGENUMBER'].unique()
+        if len(unique_stages) > 1:
+            self.record_log(
+                f"Multiple stages found: {sorted(unique_stages)}. "
+                "Reading all as a single dataset. Time gaps between stages may cause discontinuities in plots.",
+                level="INFO"
+            )
+
+        # Convert MSTTIMESTAMP to datetime objects
+        df['MSTTIMESTAMP'] = pd.to_datetime(df['MSTTIMESTAMP'], errors='coerce')
+        df.dropna(subset=['MSTTIMESTAMP'], inplace=True)
+
+        if df.empty:
+            self.record_log(f"Warning: No valid MSTTIMESTAMP data found in the file.", level="WARNING")
+            self.data = np.array([])
+            self.taxis = np.array([])
+            self.start_time = None
+            self.well_name = None
+            return
+
+        df = df.sort_values(by='MSTTIMESTAMP').reset_index(drop=True)
+
+        self.start_time = df['MSTTIMESTAMP'].iloc[0].to_pydatetime()
+        self.well_name = df['WELLNAME'].iloc[0] if not df.empty else None
+
         # --- Data Cleansing ---
         initial_rows = len(df)
-        # Replace inf values with NaN
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
-        # Drop rows with NaN in essential columns
-        df.dropna(subset=['PRESSURE_PSI', 'MSTTIMESTAMP'], inplace=True)
-        
+        df.dropna(subset=['PRESSURE_PSI'], inplace=True)
+
         cleaned_rows = len(df)
         rows_removed = initial_rows - cleaned_rows
         if rows_removed > 0:
-            self.record_log(f"Removed {rows_removed} rows with NaN or Inf values.", level="INFO")
+            self.record_log(f"Removed {rows_removed} rows with NaN, Inf, or invalid pressure values.", level="INFO")
 
-        # Check for multiple stages if no specific stage is requested
-        if stage_num is None:
-            unique_stages = df['STAGENUMBER'].unique()
-            if len(unique_stages) > 1:
-                self.record_log(
-                    f"Warning: Multiple stages found: {sorted(unique_stages)}. "
-                    "Reading all as a single dataset. Time gaps between stages may cause discontinuities in plots.",
-                    level="WARNING"
-                )
+        # --- Final Data Assignment ---
+        if df.empty:
+            self.record_log(
+                f"Warning: No valid pressure data found in {file_path} after data cleansing. "
+                f"start_time is set to the first timestamp found in the file.",
+                level="WARNING"
+            )
+            self.data = np.array([])
+            self.taxis = np.array([])
+            return
 
-        # Filter by stage number if provided
-        if stage_num is not None:
-            df = df[df['STAGENUMBER'] == stage_num].copy()
-            if df.empty:
-                raise ValueError(f"No data found for STAGENUMBER {stage_num} in {file_path}")
-            self.stage_number = stage_num
-
-        # Convert MSTTIMESTAMP to datetime objects
-        df['MSTTIMESTAMP'] = pd.to_datetime(df['MSTTIMESTAMP'])
-        df = df.sort_values(by='MSTTIMESTAMP').reset_index(drop=True)
-
-        # Set attributes
-        self.start_time = df['MSTTIMESTAMP'].iloc[0].to_pydatetime()
-        self.taxis = (df['MSTTIMESTAMP'] - df['MSTTIMESTAMP'].iloc[0]).dt.total_seconds().to_numpy()
+        self.taxis = (df['MSTTIMESTAMP'] - pd.Timestamp(self.start_time)).dt.total_seconds().to_numpy()
         self.data = df['PRESSURE_PSI'].to_numpy()
-        self.well_name = df['WELLNAME'].iloc[0]
 
         self.record_log(f"Successfully read data from {file_path} for well '{self.well_name}'.")
-        if stage_num is not None:
-            self.record_log(f"Filtered for stage number: {stage_num}.")
 
     def get_all_stages(self, file_path: str) -> List[int]:
         """
