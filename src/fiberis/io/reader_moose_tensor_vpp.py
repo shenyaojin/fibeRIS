@@ -118,6 +118,10 @@ class MOOSETensorVPPReader(core.DataIO):
             except Exception as e:
                 self.record_log(f"Could not process file {file_path}. Error: {e}", level="WARNING")
                 continue
+        # 3.5 Post-processing checks
+        # I found the data output from MOOSE always has one more taxis point than we expect.
+        # remove the last time point to align data dimensions.
+        self.taxis = self.taxis[:len(tensor_slices)]
         
         # 4. Stack the time slices into the final data array
         # The shape should be (n_depth, n_time, dim, dim)

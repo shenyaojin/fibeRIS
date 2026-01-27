@@ -52,7 +52,7 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
     # "data/fiberis_format/post_processing/injection_pressure_full_profile.npz" <- injection pressure profile
     # Load gauge data for MOOSE, I have already packed the data in fiberis format.
     gauge_data_for_moose = Data1DGauge()
-    gauge_data_for_moose.load_npz("data_fervo/fiberis_format/pressure_data/Bearskin3PA_Stage_28.npz")
+    gauge_data_for_moose.load_npz("data_fervo/fiberis_format/post_processing/gauge_data_for_simulation_synthetic_fault_pressure.npz")
     gauge_data_for_moose.data = 6894.76 * gauge_data_for_moose.data  # Convert psi to Pa
 
     # Start building the model
@@ -92,7 +92,7 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
         name="initial_pressure_matrix",
         ic_type="ConstantIC",
         variable="pp",
-        params={"value": 1.7E7}
+        params={"value": gauge_data_for_moose.data[0]}
     )
     srv_frac_pressure_ic = InitialConditionConfig(
         name="initial_pressure_srv_frac",
@@ -275,7 +275,8 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
     total_time = gauge_data_for_moose.taxis[-1] - gauge_data_for_moose.taxis[0]
     # Down sample two dataframes to speed up the simulation.
     timestepper_profile = Data1DGauge()
-    timestepper_profile.load_npz("data_fervo/fiberis_format/post_processing/Bearskin3PA_Stage_28_timestep_profile.npz")
+    timestepper_profile = gauge_data_for_moose.copy()
+    timestepper_profile.adaptive_downsample(kwargs.get("timestepper_max_points", 140))
 
     dt_control_func = TimeSequenceStepper()
     dt_control_func.from_data1d(timestepper_profile)

@@ -623,7 +623,7 @@ class Data2D:
         self.history.print_records(filter_fn=filter_fn)
 
     # --- Plotting ---
-    def plot(self, ax: Optional[Axes] = None, method: str = 'imshow',
+    def plot(self, ax: Optional[Axes] = None, method: str = 'pcolormesh',
              use_timestamp: bool = False, xaxis_rotation: float = 0,
              xtick_n: int = 5, ytick_n: Optional[int] = None,
              clim: Optional[Tuple[float, float]] = None,
