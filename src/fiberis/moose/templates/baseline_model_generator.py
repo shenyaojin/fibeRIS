@@ -184,7 +184,7 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
         confine_disp_y_boundaries="top bottom"
     )
 
-    builder.add_standard_tensor_aux_vars_and_kernels({"stress": "stress", "total_strain": "strain"})
+    builder.add_standard_tensor_aux_vars_and_kernels({"stress": "stress", "total_strain": "strain", "strain_rate": "strain_rate"})
 
     # Add post-processors to model builder
     # This part is from baseline_model_builder.py (v1) which provides better post-processing options.

@@ -1087,34 +1087,67 @@ class ModelBuilder:
     def add_standard_tensor_aux_vars_and_kernels(self, tensor_map: Dict[str, str]):
         """
         Automatically generates AuxVariables and AuxKernels for visualizing 2D tensors.
+        If an aux variable base name ends with '_rate', it generates a TimeDerivativeAux kernel
+        instead of a RankTwoAux kernel.
 
         Args:
             tensor_map (Dict[str, str]): A map where key is the material property name of the
                                         tensor (e.g., "stress", "strain") and value is the
-                                        base name for the aux variables (e.g., "stress", "total_strain").
+                                        base name for the aux variables (e.g., "stress", "strain", "strain_rate").
         """
         aux_vars_block = self._get_or_create_toplevel_moose_block("AuxVariables")
         aux_kernels_block = self._get_or_create_toplevel_moose_block("AuxKernels")
 
-        components = [('xx', 0, 0), ('xy', 0, 1), ('yx', 1, 0), ('yy', 1, 1)]
+        all_aux_base_names = list(tensor_map.values())
+
+        # Define components for standard tensors
+        standard_components = [('xx', 0, 0), ('xy', 0, 1), ('yx', 1, 0), ('yy', 1, 1)]
+        # For rate variables, we assume symmetry and only create aux vars/kernels for xx, xy, and yy components based on user's example.
+        rate_components_suffixes = ['xx', 'xy', 'yy']
 
         for material_tensor_name, aux_base_name in tensor_map.items():
-            for suffix, i, j in components:
-                var_name = f"{aux_base_name}_{suffix}"
+            # Handle rate variables (e.g., 'strain_rate')
+            if aux_base_name.endswith('_rate'):
+                base_name = aux_base_name[:-5]  # Remove '_rate'
+                if base_name not in all_aux_base_names:
+                    raise ValueError(f"For rate variable '{aux_base_name}', the base '{base_name}' was not found in tensor_map values. "
+                                     f"Please add '{base_name}' to the tensor_map.")
 
-                # Create AuxVariable
-                aux_var = MooseBlock(var_name)
-                aux_var.add_param("order", "CONSTANT")
-                aux_var.add_param("family", "MONOMIAL")
-                aux_vars_block.add_sub_block(aux_var)
+                for suffix in rate_components_suffixes:
+                    var_name = f"{aux_base_name}_{suffix}"
+                    functor_name = f"{base_name}_{suffix}"
 
-                # Create AuxKernel
-                aux_kernel = MooseBlock(var_name, block_type="RankTwoAux")
-                aux_kernel.add_param("rank_two_tensor", material_tensor_name)
-                aux_kernel.add_param("variable", var_name)
-                aux_kernel.add_param("index_i", i)
-                aux_kernel.add_param("index_j", j)
-                aux_kernels_block.add_sub_block(aux_kernel)
+                    # Create AuxVariable for the rate component
+                    aux_var = MooseBlock(var_name)
+                    aux_var.add_param("order", "CONSTANT")
+                    aux_var.add_param("family", "MONOMIAL")
+                    aux_vars_block.add_sub_block(aux_var)
+
+                    # Create TimeDerivativeAux Kernel
+                    aux_kernel = MooseBlock(var_name, block_type="TimeDerivativeAux")
+                    aux_kernel.add_param("variable", var_name)
+                    aux_kernel.add_param("functor", functor_name)
+                    aux_kernel.add_param("execute_on", 'timestep_end')
+                    aux_kernels_block.add_sub_block(aux_kernel)
+
+            # Handle standard tensor variables (e.g., 'stress', 'strain')
+            else:
+                for suffix, i, j in standard_components:
+                    var_name = f"{aux_base_name}_{suffix}"
+
+                    # Create AuxVariable
+                    aux_var = MooseBlock(var_name)
+                    aux_var.add_param("order", "CONSTANT")
+                    aux_var.add_param("family", "MONOMIAL")
+                    aux_vars_block.add_sub_block(aux_var)
+
+                    # Create RankTwoAux Kernel
+                    aux_kernel = MooseBlock(var_name, block_type="RankTwoAux")
+                    aux_kernel.add_param("rank_two_tensor", material_tensor_name)
+                    aux_kernel.add_param("variable", var_name)
+                    aux_kernel.add_param("index_i", i)
+                    aux_kernel.add_param("index_j", j)
+                    aux_kernels_block.add_sub_block(aux_kernel)
 
         print(f"Info: Added standard AuxVariables and AuxKernels for tensors: {list(tensor_map.keys())}")
         return self
