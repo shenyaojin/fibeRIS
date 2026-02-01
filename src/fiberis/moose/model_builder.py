@@ -330,6 +330,10 @@ class ModelBuilder:
         self.fracture_configs.append(config)
         return self
 
+    #### New MESH GENERATION METHODS FOR PERM IMAGING below ###
+    
+
+
     def add_fluid_properties_config(self, config: 'SimpleFluidPropertiesConfig') -> 'ModelBuilder':
         """
         Add or update a fluid properties configuration.
