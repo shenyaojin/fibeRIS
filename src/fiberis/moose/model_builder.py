@@ -87,6 +87,7 @@ class ModelBuilder:
         lines.append("-----------------------------")
         return "\n".join(lines)
 
+    @staticmethod
     def _generate_unique_op_name(self, base_name: str, existing_names_list: List[str]) -> str:
         """
         Generate a unique operation name by appending a counter if the base name already exists.

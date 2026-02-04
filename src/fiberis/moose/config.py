@@ -161,6 +161,57 @@ class SRVConfig:
         self.mesh_length_param: Optional[float] = mesh_length_param
         self.mesh_height_param: Optional[float] = mesh_height_param
 
+
+# +++ Casing/Layered Model Configurations (New) +++
+class CasingLayerConfig:
+    """
+    Configuration for a single horizontal layer in a layered/casing model.
+    Each layer has its own height and distinct material properties.
+    """
+    def __init__(self,
+                 name: str,
+                 height: float,
+                 materials: ZoneMaterialProperties):
+        """
+        Initializes a CasingLayerConfig object.
+
+        Args:
+            name (str): The block name for this layer (e.g., 'layer1', 'sandstone').
+            height (float): The vertical thickness of this layer.
+            materials (ZoneMaterialProperties): An object containing material properties for this specific layer,
+                                              including potentially anisotropic permeability tensors.
+        """
+        self.name: str = name
+        self.height: float = height
+        self.materials: ZoneMaterialProperties = materials
+
+
+class CasingConfig:
+    """
+    Configuration for a multi-layer casing model with uniform meshing
+    and distinct, potentially anisotropic, material properties per layer.
+    This model type is distinct from the fracture/SRV model and uses a different mesh generation strategy.
+    """
+    def __init__(self,
+                 name: str,
+                 layers: List[CasingLayerConfig],
+                 injection_well_name: str,
+                 injection_well_x_coord: float):
+        """
+        Initializes the main CasingConfig object.
+
+        Args:
+            name (str): The overall name for this casing model setup.
+            layers (List[CasingLayerConfig]): A list of CasingLayerConfig objects, defining the vertical
+                                             stratigraphy from top to bottom.
+            injection_well_name (str): The desired name for the boundary representing the injection well (a vertical line).
+            injection_well_x_coord (float): The x-coordinate where the vertical injection well is located.
+        """
+        self.name: str = name
+        self.layers: List[CasingLayerConfig] = layers
+        self.injection_well_name: str = injection_well_name
+        self.injection_well_x_coord: float = injection_well_x_coord
+
 class IndicatorConfig:
     """
     Configuration for a single Indicator within the MOOSE [Adaptivity][Indicators] block.
