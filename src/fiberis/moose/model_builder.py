@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 # Import config classes and lower-level MooseBlock class from the user's original file.
 from fiberis.moose.config import HydraulicFractureConfig, SRVConfig, AdaptivityConfig, \
     PointValueSamplerConfig, LineValueSamplerConfig, PostprocessorConfigBase, \
-    SimpleFluidPropertiesConfig, MatrixConfig, AdaptiveTimeStepperConfig, TimeSequenceStepper, PostprocessorConfig
+    SimpleFluidPropertiesConfig, MatrixConfig, AdaptiveTimeStepperConfig, TimeSequenceStepper, PostprocessorConfig, CasingConfig
 from fiberis.moose.input_generator import MooseBlock
 from fiberis.analyzer.Data1D import core1D
 
@@ -29,6 +29,7 @@ class ModelBuilder:
         self.matrix_config: Optional[MatrixConfig] = None
         self.srv_configs: List[SRVConfig] = []
         self.fracture_configs: List[HydraulicFractureConfig] = []
+        self.casing_config: Optional[CasingConfig] = None
         self.fluid_properties_configs: List[SimpleFluidPropertiesConfig] = []
         self._block_id_to_name_map: Dict[int, str] = {}
         self._next_available_block_id: int = 1
@@ -88,7 +89,7 @@ class ModelBuilder:
         return "\n".join(lines)
 
     @staticmethod
-    def _generate_unique_op_name(self, base_name: str, existing_names_list: List[str]) -> str:
+    def _generate_unique_op_name(base_name: str, existing_names_list: List[str]) -> str:
         """
         Generate a unique operation name by appending a counter if the base name already exists.
 
@@ -285,21 +286,17 @@ class ModelBuilder:
         numeric block IDs with descriptive names based on the configured zones.
         """
         if self._block_id_to_name_map:
-            if 0 not in self._block_id_to_name_map:
-                self._block_id_to_name_map[0] = (self.matrix_config.name if self.matrix_config else "matrix")
+            # Only add the default matrix block '0' if we are NOT in a casing model workflow.
+            # In the casing model, the layers completely replace the base block '0'.
+            if self.casing_config is None:
+                if 0 not in self._block_id_to_name_map:
+                    self._block_id_to_name_map[0] = (self.matrix_config.name if self.matrix_config else "matrix")
+
             old_block_ids = sorted(self._block_id_to_name_map.keys())
             new_block_names = [self._block_id_to_name_map[bid] for bid in old_block_ids]
             params = {'old_block': f"'{' '.join(map(str, old_block_ids))}'",
                       'new_block': f"'{' '.join(new_block_names)}'"}
             self._add_generic_mesh_generator("final_block_rename", "RenameBlockGenerator", params)
-
-    def add_named_boundary(self, new_boundary_name: str, bottom_left: Tuple, top_right: Tuple):
-        """NEW: Creates a named boundary (sideset) using a bounding box. Essential for reliable BCs."""
-        params = {'new_boundary_name': new_boundary_name,
-                  'bottom_left': f"'{bottom_left[0]} {bottom_left[1]} {bottom_left[2]}'",
-                  'top_right': f"'{top_right[0]} {top_right[1]} {top_right[2]}'"}
-        self._add_generic_mesh_generator(f"create_{new_boundary_name}", "SideSetBoundingBoxGenerator", params)
-        return self
 
     def set_matrix_config(self, config: 'MatrixConfig') -> 'ModelBuilder':
         """
@@ -331,7 +328,87 @@ class ModelBuilder:
         self.fracture_configs.append(config)
         return self
 
+    def add_casing_config(self, config: 'CasingConfig') -> 'ModelBuilder':
+        """
+        Adds a casing/layered model configuration to the builder. This implies a different
+        meshing and material assignment strategy than the fracture/SRV models.
+        """
+        if self.matrix_config or self.srv_configs or self.fracture_configs:
+            print("Warning: Adding a CasingConfig to a ModelBuilder that already has "
+                  "Matrix/SRV/Fracture configs is not standard. The CasingConfig mesh "
+                  "generation will take precedence if called.")
+        self.casing_config = config
+        return self
+
     #### New MESH GENERATION METHODS FOR PERM IMAGING below ###
+    def build_mesh_for_casing_model(self,
+                                    domain_length: float,
+                                    nx: int,
+                                    ny: int):
+        """
+        Builds a uniformly layered mesh by defining a single large domain and then
+        creating each layer as a subdomain using the same mechanism as SRV zones.
+        This avoids the need for stitching or potentially unavailable mesh generators.
+        """
+        if not self.casing_config:
+            raise ValueError("A CasingConfig must be added to the builder before calling this method.")
+
+        # 1. Calculate overall domain dimensions
+        total_height = sum(layer.height for layer in self.casing_config.layers)
+        ymin, ymax = -total_height / 2.0, total_height / 2.0
+
+        # 2. Create a single mesh for the entire domain
+        base_mesh_params = {
+            'dim': 2, 'nx': nx, 'ny': ny,
+            'xmin': 0, 'xmax': domain_length,
+            'ymin': ymin, 'ymax': ymax
+        }
+        self._add_generic_mesh_generator("base_mesh", "GeneratedMeshGenerator", base_mesh_params, input_op="")
+
+        # 3. Define each layer as an SRV-like subdomain
+        current_y_bottom = ymin
+        next_block_id = 1  # Start block IDs from 1, 0 is the matrix
+        for layer in self.casing_config.layers:
+            layer_center_y = current_y_bottom + layer.height / 2.0
+            
+            # Use SRVConfig and add_srv_zone_2d to create the layer subdomain
+            layer_as_srv = SRVConfig(
+                name=layer.name,
+                length=domain_length,
+                height=layer.height,
+                center_x=domain_length / 2.0,
+                center_y=layer_center_y,
+                materials=layer.materials 
+            )
+            # This method correctly handles adding the subdomain and managing block IDs
+            self.add_srv_zone_2d(layer_as_srv, target_block_id=next_block_id)
+
+            current_y_bottom += layer.height
+            next_block_id += 1
+            
+        # 4. Define the injection well as a nodeset
+        self.add_nodeset_by_coord(
+            nodeset_op_name="injection_well_nodes",
+            new_boundary_name=self.casing_config.injection_well_name,
+            coordinates=(self.casing_config.injection_well_x_coord, 0, 0) # Assuming injection at y=0
+        )
+
+        # Finalize by renaming blocks (the add_srv_zone_2d calls have populated the map)
+        self._finalize_mesh_block_renaming()
+        
+        # Store geometry info for plotting
+        self.geometry_info['mesh'] = {
+            'domain_bounds': (ymin, ymax),
+            'domain_length': domain_length,
+            'type': 'casing_model_srv_layers'
+        }
+        self.geometry_info['casing_layers'] = [
+            {'name': layer.name, 'height': layer.height} for layer in self.casing_config.layers
+        ]
+
+        print(f"Info: Successfully built layered mesh for '{self.casing_config.name}' using SRV method.")
+        return self
+
     
 
 
@@ -971,71 +1048,101 @@ class ModelBuilder:
                                     solid_bulk_compliance: float,
                                     displacements: List[str] = ['disp_x', 'disp_y'],
                                     porepressure_variable: str = 'pp') -> 'ModelBuilder':
-        """Builds the entire [Materials] block based on stored configs."""
+        """
+        Builds the entire [Materials] block based on stored configs.
+        This method now supports two distinct workflows:
+        1. For Casing/Layered models, it defines materials on a per-layer basis.
+        2. For legacy Fracture/SRV models, it uses a global elasticity tensor derived
+           from the matrix properties to ensure backward compatibility.
+        """
         fluid_config = next((c for c in self.fluid_properties_configs if c.name == fluid_properties_name), None)
         if not fluid_config:
             raise ValueError(f"FluidPropertiesConfig '{fluid_properties_name}' not found.")
 
         self.add_simple_fluid_properties(config=fluid_config)
-
         mat_block = self._get_or_create_toplevel_moose_block("Materials")
-        all_configs = ([self.matrix_config] if self.matrix_config else []) + self.srv_configs + self.fracture_configs
-        all_block_names = [c.name for c in all_configs if c]
 
-        for conf in all_configs:
-            if not conf: continue
-            # --- Porosity Block (Unchanged) ---
-            poro_mat = MooseBlock(f"porosity_{conf.name}", "PorousFlowPorosityConst")
-            poro_mat.add_param("porosity", conf.materials.porosity)
-            poro_mat.add_param("block", conf.name)
-            mat_block.add_sub_block(poro_mat)
+        # Logic is bifurcated to handle casing vs. fracture models separately
+        if self.casing_config:
+            # --- LOGIC FOR CASING/LAYERED MODEL ---
+            all_configs = self.casing_config.layers
+            all_block_names = [c.name for c in all_configs if c]
 
-            # --- NEW Permeability Logic ---
-            perm_value = conf.materials.permeability
-            if isinstance(perm_value, str) and perm_value.endswith('.npz'):
-                # Case 1: Time-dependent permeability from an .npz file
-                perm_func_name = f"perm_func_{conf.name}"
-                scalar_perm_var_name = f"scalar_perm_{conf.name}"
+            for conf in all_configs:
+                # Porosity
+                poro_mat = MooseBlock(f"porosity_{conf.name}", "PorousFlowPorosityConst")
+                poro_mat.add_param("porosity", conf.materials.porosity)
+                poro_mat.add_param("block", conf.name)
+                mat_block.add_sub_block(poro_mat)
 
-                # Load the .npz file into a Data1D-like object
-                perm_data = core1D.Data1D()
-                perm_data.load_npz(perm_value)
-
-                # Add the [Functions] block for this data
-                self.add_piecewise_function_from_data1d(name=perm_func_name, source_data1d=perm_data)
-
-                # --- Create an AuxVariable and AuxKernel to make the function value available as a field variable ---
-                # 1. Add AuxVariable
-                aux_vars_block = self._get_or_create_toplevel_moose_block("AuxVariables")
-                aux_var = MooseBlock(scalar_perm_var_name)
-                aux_var.add_param("order", "CONSTANT")
-                aux_var.add_param("family", "MONOMIAL")
-                aux_vars_block.add_sub_block(aux_var)
-
-                # 2. Add AuxKernel to couple the function to the aux variable
-                aux_kernels_block = self._get_or_create_toplevel_moose_block("AuxKernels")
-                aux_kernel = MooseBlock(scalar_perm_var_name, block_type="FunctionAux")
-                aux_kernel.add_param("variable", scalar_perm_var_name)
-                aux_kernel.add_param("function", perm_func_name)
-                aux_kernel.add_param("block", conf.name)
-                aux_kernels_block.add_sub_block(aux_kernel)
-
-                # Create the final permeability tensor, coupling it to the new AuxVariable
-                perm_mat = MooseBlock(f"permeability_{conf.name}", "PorousFlowPermeabilityTensorFromVar")
-                perm_mat.add_param("perm", scalar_perm_var_name)
-                perm_mat.add_param("block", conf.name)
-                mat_block.add_sub_block(perm_mat)
-                print(
-                    f"Info: Configured time-dependent permeability for '{conf.name}' using function '{perm_func_name}'.")
-
-            else:
-                # Case 2: Constant permeability (scalar float or tensor string)
+                # Permeability (handles scalar or tensor strings)
                 perm_mat = MooseBlock(f"permeability_{conf.name}", "PorousFlowPermeabilityConst")
-                perm_mat.add_param("permeability", perm_value)  # Handles both float and string
+                perm_mat.add_param("permeability", conf.materials.permeability)
                 perm_mat.add_param("block", conf.name)
                 mat_block.add_sub_block(perm_mat)
 
-        # --- Remainder of the function (Unchanged) ---
+                # Per-layer elasticity
+                if conf.materials.youngs_modulus and conf.materials.poissons_ratio:
+                    elasticity_mat = MooseBlock(f"elasticity_tensor_{conf.name}", "ComputeIsotropicElasticityTensor")
+                    elasticity_mat.add_param("youngs_modulus", conf.materials.youngs_modulus)
+                    elasticity_mat.add_param("poissons_ratio", conf.materials.poissons_ratio)
+                    elasticity_mat.add_param("block", conf.name)
+                    mat_block.add_sub_block(elasticity_mat)
+
+        else:
+            # --- ORIGINAL LOGIC FOR FRACTURE/SRV MODEL (FOR BACKWARD COMPATIBILITY) ---
+            all_configs = ([self.matrix_config] if self.matrix_config else []) + self.srv_configs + self.fracture_configs
+            all_block_names = [c.name for c in all_configs if c]
+
+            for conf in all_configs:
+                if not conf: continue
+                # Porosity
+                poro_mat = MooseBlock(f"porosity_{conf.name}", "PorousFlowPorosityConst")
+                poro_mat.add_param("porosity", conf.materials.porosity)
+                poro_mat.add_param("block", conf.name)
+                mat_block.add_sub_block(poro_mat)
+
+                # Permeability (with support for time-dependent .npz files)
+                perm_value = conf.materials.permeability
+                if isinstance(perm_value, str) and perm_value.endswith('.npz'):
+                    perm_func_name = f"perm_func_{conf.name}"
+                    scalar_perm_var_name = f"scalar_perm_{conf.name}"
+                    perm_data = core1D.Data1D()
+                    perm_data.load_npz(perm_value)
+                    self.add_piecewise_function_from_data1d(name=perm_func_name, source_data1d=perm_data)
+                    
+                    aux_vars_block = self._get_or_create_toplevel_moose_block("AuxVariables")
+                    aux_var = MooseBlock(scalar_perm_var_name)
+                    aux_var.add_param("order", "CONSTANT")
+                    aux_var.add_param("family", "MONOMIAL")
+                    aux_vars_block.add_sub_block(aux_var)
+
+                    aux_kernels_block = self._get_or_create_toplevel_moose_block("AuxKernels")
+                    aux_kernel = MooseBlock(scalar_perm_var_name, block_type="FunctionAux")
+                    aux_kernel.add_param("variable", scalar_perm_var_name)
+                    aux_kernel.add_param("function", perm_func_name)
+                    aux_kernel.add_param("block", conf.name)
+                    aux_kernels_block.add_sub_block(aux_kernel)
+
+                    perm_mat = MooseBlock(f"permeability_{conf.name}", "PorousFlowPermeabilityTensorFromVar")
+                    perm_mat.add_param("perm", scalar_perm_var_name)
+                    perm_mat.add_param("block", conf.name)
+                    mat_block.add_sub_block(perm_mat)
+                else:
+                    perm_mat = MooseBlock(f"permeability_{conf.name}", "PorousFlowPermeabilityConst")
+                    perm_mat.add_param("permeability", perm_value)
+                    perm_mat.add_param("block", conf.name)
+                    mat_block.add_sub_block(perm_mat)
+
+            # Global elasticity tensor based on matrix properties (original behavior)
+            elasticity_mat = MooseBlock("elasticity_tensor_matrix", "ComputeIsotropicElasticityTensor")
+            youngs_modulus = self.matrix_config.materials.youngs_modulus if self.matrix_config and self.matrix_config.materials.youngs_modulus is not None else 5.0E10
+            poissons_ratio = self.matrix_config.materials.poissons_ratio if self.matrix_config and self.matrix_config.materials.poissons_ratio is not None else 0.2
+            elasticity_mat.add_param("youngs_modulus", youngs_modulus)
+            elasticity_mat.add_param("poissons_ratio", poissons_ratio)
+            mat_block.add_sub_block(elasticity_mat)
+
+        # --- COMMON MATERIALS FOR BOTH MODEL TYPES ---
         mat_block.add_sub_block(MooseBlock("temperature", "PorousFlowTemperature"))
 
         biot_mod_params = {
@@ -1065,13 +1172,6 @@ class ModelBuilder:
         mat_block.add_sub_block(relp_mat)
 
         mat_block.add_sub_block(MooseBlock("eff_fluid_pressure_qp", "PorousFlowEffectiveFluidPressure"))
-
-        elasticity_mat = MooseBlock("elasticity_tensor_matrix", "ComputeIsotropicElasticityTensor")
-        youngs_modulus = self.matrix_config.materials.youngs_modulus if self.matrix_config and self.matrix_config.materials.youngs_modulus is not None else 5.0E10
-        poissons_ratio = self.matrix_config.materials.poissons_ratio if self.matrix_config and self.matrix_config.materials.poissons_ratio is not None else 0.2
-        elasticity_mat.add_param("youngs_modulus", youngs_modulus)
-        elasticity_mat.add_param("poissons_ratio", poissons_ratio)
-        mat_block.add_sub_block(elasticity_mat)
 
         strain_mat = MooseBlock("strain", "ComputeSmallStrain")
         strain_mat.add_param("displacements", ' '.join(displacements))
@@ -1376,6 +1476,17 @@ class ModelBuilder:
                                           edgecolor='black', facecolor='yellow', alpha=0.6, linewidth=1.5, label=f"SRV: {srv['name']}")
                 ax.add_patch(srv_patch)
 
+        # Plot casing layers if they exist
+        if self.geometry_info.get('mesh', {}).get('type') == 'casing_model':
+            y_start = self.geometry_info['mesh']['domain_bounds'][0]
+            for layer in self.geometry_info.get('casing_layers', []):
+                layer_patch = plt.Rectangle((0, y_start), domain_length, layer['height'],
+                                            edgecolor='black', facecolor=np.random.rand(3,), alpha=0.5,
+                                            label=f"Layer: {layer['name']}")
+                ax.add_patch(layer_patch)
+                y_start += layer['height']
+
+
         # Plot hydraulic fractures
         if 'hydraulic_fractures' in self.geometry_info:
             for hf in self.geometry_info['hydraulic_fractures']:
@@ -1441,6 +1552,89 @@ class ModelBuilder:
             print(f"Geometry plot saved to: {save_path}")
         else:
             plt.show() # Display the plot interactively
+
+    def plot_permeability_map(self, save_path: Optional[str] = None, **kwargs) -> None:
+        """
+        Generates a color-coded plot of the permeability map for a layered casing model.
+        """
+        if not self.casing_config:
+            raise ValueError("This plotting function is only for CasingConfig models.")
+
+        mesh_info = self.geometry_info['mesh']
+        domain_length = mesh_info['domain_length']
+        ymin, ymax = mesh_info['domain_bounds']
+
+        fig, ax = plt.subplots(figsize=(8, 7))
+
+        # Extract permeabilities and handle non-float values
+        perms = []
+        for layer in self.casing_config.layers:
+            try:
+                # Assuming permeability is a float or a string like '1e-15 0 0 ...'
+                perm_val = float(str(layer.materials.permeability).split()[0])
+                perms.append(perm_val)
+            except (ValueError, IndexError):
+                print(f"Warning: Could not parse permeability for layer '{layer.name}'. Using NaN.")
+                perms.append(np.nan)
+
+        valid_perms = [p for p in perms if not np.isnan(p)]
+        if not valid_perms:
+            print("Error: No valid permeability values found to plot.")
+            return
+
+        # Use log scale for normalization
+        norm = plt.Normalize(vmin=np.log10(min(valid_perms)), vmax=np.log10(max(valid_perms)))
+        cmap = plt.cm.get_cmap('viridis')
+
+        # Plot layers
+        y_start = ymin
+        for i, layer in enumerate(self.casing_config.layers):
+            perm_val = perms[i]
+            if not np.isnan(perm_val):
+                color = cmap(norm(np.log10(perm_val)))
+            else:
+                color = 'gray'  # For layers with un-parseable permeability
+
+            layer_patch = plt.Rectangle((0, y_start), domain_length, layer.height,
+                                        edgecolor='black', facecolor=color,
+                                        label=f"{layer.name} (k={perm_val:.1e})")
+            ax.add_patch(layer_patch)
+            ax.text(domain_length / 2, y_start + layer.height / 2, layer.name,
+                    ha='center', va='center', color='white', fontsize=10, weight='bold')
+            y_start += layer.height
+        
+        # Plot injection well
+        well_x = self.casing_config.injection_well_x_coord
+        ax.axvline(x=well_x, color='red', linestyle='--', linewidth=2, label='Injection Well')
+
+        ax.set_xlim(0, domain_length)
+        ax.set_ylim(ymin, ymax)
+        ax.set_xlabel("X-coordinate (m)")
+        ax.set_ylabel("Y-coordinate (m)")
+        ax.set_title(f"Permeability Map: {self.project_name}")
+        ax.set_aspect('equal', adjustable='box')
+        ax.invert_yaxis()
+        ax.legend()
+        plt.grid(True, linestyle='--', alpha=0.6)
+
+        # Add a colorbar
+        sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+        sm.set_array([])
+        cbar = fig.colorbar(sm, ax=ax, orientation='vertical', fraction=0.046, pad=0.04)
+        cbar.set_label('Permeability (m^2) - Log Scale')
+        
+        # Set colorbar ticks to correspond to actual permeability values
+        tick_locs = np.linspace(norm.vmin, norm.vmax, 6)
+        cbar.set_ticks(tick_locs)
+        cbar.set_ticklabels([f"{10**x:.1e}" for x in tick_locs])
+
+        fig.tight_layout()
+
+        if save_path:
+            plt.savefig(save_path, dpi=300)
+            print(f"Permeability map saved to: {save_path}")
+        else:
+            plt.show()
 
     def extract_geometry(self) -> Dict[str, Any]:
         """

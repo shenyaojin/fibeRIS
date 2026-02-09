@@ -519,20 +519,6 @@ def misfit_calculator(**kwargs) -> float:
         return total_misfit, np.array(all_channel_misfits)
     else:
         return total_misfit
-        ax.text(0.05, 0.95, misfit_text, transform=ax.transAxes, fontsize=10,
-                verticalalignment='top', bbox=dict(boxstyle='round,pad=0.5', fc='yellow', alpha=0.5))
-
-        if save_path:
-            if not os.path.isdir(save_path):
-                os.makedirs(save_path, exist_ok=True)
-            plot_filename = os.path.join(save_path, f'misfit_channel_{iter_chan}_depth_{obs_depth:.2f}.png')
-        else:
-            plot_filename = f'misfit_channel_{iter_chan}_depth_{obs_depth:.2f}.png'
-
-        plt.savefig(plot_filename)
-        plt.close(fig)
-
-    return total_misfit
 
 if __name__ == "__main__":
     print("Don't run this script directly. It is meant to be imported as a module.\n--Shenyao")
