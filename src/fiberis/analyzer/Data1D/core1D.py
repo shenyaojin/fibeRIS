@@ -508,6 +508,19 @@ class Data1D:
         """
         print(self.get_info_str())
 
+    def print_str(self) -> None:
+        """
+        Print the taxis and data arrays in a specific string format.
+        Example: if self.taxis = np.array([0, 1, 2, 3]), it prints '----> 0 1 2 3 <----'.
+        """
+        if self.taxis is not None and self.data is not None:
+            taxis_str = ' '.join(map(str, self.taxis))
+            data_str = ' '.join(map(str, self.data))
+            print(taxis_str)
+            print(data_str)
+        else:
+            print("Taxis or Data is not set")
+
     def __str__(self) -> str:
         """Return the summary string of the Data1D object."""
         return self.get_info_str()
