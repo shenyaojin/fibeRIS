@@ -1784,6 +1784,394 @@ class ModelBuilder:
 
         # 13. Generate the final input file
         builder.generate_input_file(output_filepath)
+        
+class OptimizationLayeredModelBuilder(ModelBuilder):
+    """
+    A specialized ModelBuilder for layered casing models, which may have unique requirements
+    for mesh construction, material definitions, and output configurations.
+    
+    This model builder is designed to perform parameter optimization so that a best value set of layer properties 
+    can be identified. 
+    """
+    def __init__(self, project_name: str):
+        super().__init__(project_name)
+        self.casing_config: Optional[CasingConfig] = None
+
+    def set_casing_config(self, config: CasingConfig) -> 'OptimizationLayeredModelBuilder':
+        """Sets the casing configuration for the model."""
+        self.casing_config = config
+        print(f"Info: Casing configuration set with {len(config.layers)} layers and injection well at x={config.injection_well_x_coord}.")
+        return self
+
+    def add_adjoint_variables(self) -> 'OptimizationLayeredModelBuilder':
+        vars_block = self._get_or_create_toplevel_moose_block("Variables")
+        for var_name in ["pp_adjoint", "disp_x_adjoint", "disp_y_adjoint"]:
+            var_block = MooseBlock(var_name)
+            var_block.add_param("solver_sys", "adjoint")
+            var_block.add_param("initial_condition", 0)
+            vars_block.add_sub_block(var_block)
+        return self
+
+    def setup_optimization_forward_model(self, perm_y: float = 1e-20, perm_z: float = 0.0) -> 'OptimizationLayeredModelBuilder':
+        if not self.casing_config:
+            raise ValueError("CasingConfig not set.")
+
+        funcs_block = self._get_or_create_toplevel_moose_block("Functions")
+        
+        func_kyy = MooseBlock("func_kyy", block_type="ParsedFunction")
+        func_kyy.add_param("expression", f"'{perm_y}'")
+        funcs_block.add_sub_block(func_kyy)
+
+        func_kzz = MooseBlock("func_zero", block_type="ParsedFunction")
+        func_kzz.add_param("expression", f"'{perm_z}'")
+        funcs_block.add_sub_block(func_kzz)
+
+        aux_vars_block = self._get_or_create_toplevel_moose_block("AuxVariables")
+        aux_var_yy = MooseBlock("perm_yy_var")
+        aux_var_yy.add_param("order", "CONSTANT")
+        aux_var_yy.add_param("family", "MONOMIAL")
+        aux_vars_block.add_sub_block(aux_var_yy)
+
+        aux_var_zz = MooseBlock("perm_zz_var")
+        aux_var_zz.add_param("order", "CONSTANT")
+        aux_var_zz.add_param("family", "MONOMIAL")
+        aux_vars_block.add_sub_block(aux_var_zz)
+
+        aux_kernels_block = self._get_or_create_toplevel_moose_block("AuxKernels")
+        aux_kernel_yy = MooseBlock("perm_yy_aux", block_type="FunctionAux")
+        aux_kernel_yy.add_param("variable", "perm_yy_var")
+        aux_kernel_yy.add_param("function", "func_kyy")
+        aux_kernel_yy.add_param("execute_on", "'INITIAL TIMESTEP_BEGIN TIMESTEP_END'")
+        aux_kernels_block.add_sub_block(aux_kernel_yy)
+
+        aux_kernel_zz = MooseBlock("perm_zz_aux", block_type="FunctionAux")
+        aux_kernel_zz.add_param("variable", "perm_zz_var")
+        aux_kernel_zz.add_param("function", "func_zero")
+        aux_kernel_zz.add_param("execute_on", "'INITIAL TIMESTEP_BEGIN TIMESTEP_END'")
+        aux_kernels_block.add_sub_block(aux_kernel_zz)
+
+        vpps_block = self._get_or_create_toplevel_moose_block("VectorPostprocessors")
+
+        for i, layer in enumerate(self.casing_config.layers):
+            layer_name = layer.name
+            param_name = f"perm_{i+1}"
+            func_name = f"perm_{layer_name}"
+            var_name = f"perm_xx_{layer_name}"
+
+            # Function
+            func = MooseBlock(func_name, block_type="ParsedOptimizationFunction")
+            func.add_param("expression", "'10^alpha'")
+            func.add_param("param_symbol_names", "'alpha'")
+            func.add_param("param_vector_name", f"'params/{param_name}'")
+            funcs_block.add_sub_block(func)
+
+            # AuxVariable
+            aux_var = MooseBlock(var_name)
+            aux_var.add_param("order", "CONSTANT")
+            aux_var.add_param("family", "MONOMIAL")
+            aux_vars_block.add_sub_block(aux_var)
+
+            # AuxKernel
+            aux_kernel = MooseBlock(f"{var_name}_aux", block_type="FunctionAux")
+            aux_kernel.add_param("variable", var_name)
+            aux_kernel.add_param("function", func_name)
+            aux_kernel.add_param("block", layer_name)
+            aux_kernel.add_param("execute_on", "'INITIAL TIMESTEP_BEGIN TIMESTEP_END'")
+            aux_kernels_block.add_sub_block(aux_kernel)
+
+            # VectorPostprocessor for gradient
+            vpp = MooseBlock(f"grad_{func_name}", block_type="ElementOptimizationDiffusionCoefFunctionInnerProduct")
+            vpp.add_param("variable", "pp_adjoint")
+            vpp.add_param("forward_variable", "pp")
+            vpp.add_param("function", func_name)
+            vpp.add_param("block", layer_name)
+            vpp.add_param("execute_on", "ADJOINT_TIMESTEP_END")
+            vpp.add_param("outputs", "none")
+            vpps_block.add_sub_block(vpp)
+
+        return self
+
+    def add_optimization_poromechanics_materials(self,
+                                                 fluid_properties_name: str,
+                                                 biot_coefficient: float,
+                                                 solid_bulk_compliance: float,
+                                                 displacements: List[str] = ['disp_x', 'disp_y'],
+                                                 porepressure_variable: str = 'pp') -> 'OptimizationLayeredModelBuilder':
+        if not self.casing_config:
+            raise ValueError("CasingConfig must be set.")
+
+        fluid_config = next((c for c in self.fluid_properties_configs if c.name == fluid_properties_name), None)
+        if not fluid_config:
+            raise ValueError(f"FluidPropertiesConfig '{fluid_properties_name}' not found.")
+
+        self.add_simple_fluid_properties(config=fluid_config)
+        mat_block = self._get_or_create_toplevel_moose_block("Materials")
+
+        all_configs = self.casing_config.layers
+        all_block_names = [c.name for c in all_configs if c]
+
+        for conf in all_configs:
+            # Porosity
+            poro_mat = MooseBlock(f"porosity_{conf.name}", "PorousFlowPorosityConst")
+            poro_mat.add_param("porosity", conf.materials.porosity)
+            poro_mat.add_param("block", conf.name)
+            mat_block.add_sub_block(poro_mat)
+
+            # Permeability from Var
+            perm_mat = MooseBlock(f"permeability_{conf.name}", "PorousFlowPermeabilityConstFromVar")
+            perm_mat.add_param("perm_xx", f"perm_xx_{conf.name}")
+            perm_mat.add_param("perm_yy", "perm_yy_var")
+            perm_mat.add_param("perm_zz", "perm_zz_var")
+            perm_mat.add_param("block", conf.name)
+            mat_block.add_sub_block(perm_mat)
+
+            # Per-layer elasticity
+            if conf.materials.youngs_modulus and conf.materials.poissons_ratio:
+                elasticity_mat = MooseBlock(f"elasticity_tensor_{conf.name}", "ComputeIsotropicElasticityTensor")
+                elasticity_mat.add_param("youngs_modulus", conf.materials.youngs_modulus)
+                elasticity_mat.add_param("poissons_ratio", conf.materials.poissons_ratio)
+                elasticity_mat.add_param("block", conf.name)
+                mat_block.add_sub_block(elasticity_mat)
+
+        mat_block.add_sub_block(MooseBlock("temperature", "PorousFlowTemperature"))
+
+        biot_mod_params = {
+            "biot_coefficient": biot_coefficient,
+            "solid_bulk_compliance": solid_bulk_compliance,
+            "fluid_bulk_modulus": fluid_config.bulk_modulus,
+            "block": ' '.join(all_block_names)
+        }
+        biot_mod_mat = MooseBlock("biot_modulus", "PorousFlowConstantBiotModulus")
+        for p_name, p_val in biot_mod_params.items():
+            biot_mod_mat.add_param(p_name, p_val)
+        mat_block.add_sub_block(biot_mod_mat)
+
+        mat_block.add_sub_block(MooseBlock("massfrac", "PorousFlowMassFraction"))
+
+        fluid_mat = MooseBlock("simple_fluid", "PorousFlowSingleComponentFluid")
+        fluid_mat.add_param("fp", fluid_config.name)
+        fluid_mat.add_param("phase", 0)
+        mat_block.add_sub_block(fluid_mat)
+
+        ps_mat = MooseBlock("PS", "PorousFlow1PhaseFullySaturated")
+        ps_mat.add_param("porepressure", porepressure_variable)
+        mat_block.add_sub_block(ps_mat)
+
+        relp_mat = MooseBlock("relp", "PorousFlowRelativePermeabilityConst")
+        relp_mat.add_param("phase", 0)
+        mat_block.add_sub_block(relp_mat)
+
+        mat_block.add_sub_block(MooseBlock("eff_fluid_pressure_qp", "PorousFlowEffectiveFluidPressure"))
+
+        strain_mat = MooseBlock("strain", "ComputeSmallStrain")
+        strain_mat.add_param("displacements", ' '.join(displacements))
+        strain_mat.add_param("block", ' '.join(all_block_names))
+        mat_block.add_sub_block(strain_mat)
+
+        stress_mat = MooseBlock("stress", "ComputeLinearElasticStress")
+        stress_mat.add_param("block", ' '.join(all_block_names))
+        mat_block.add_sub_block(stress_mat)
+
+        vol_strain_mat = MooseBlock("vol_strain", "PorousFlowVolumetricStrain")
+        vol_strain_mat.add_param("displacements", ' '.join(displacements))
+        mat_block.add_sub_block(vol_strain_mat)
+
+        return self
+
+    def add_optimization_executioner_block(self, end_time: float, dt: float, **kwargs) -> 'OptimizationLayeredModelBuilder':
+        exec_block = self._get_or_create_toplevel_moose_block("Executioner")
+        params = {
+            "type": "TransientAndAdjoint",
+            "forward_system": "nl0",
+            "adjoint_system": "adjoint",
+            "end_time": end_time,
+            "verbose": True,
+            "l_tol": 1e-3,
+            "l_max_its": 2000,
+            "nl_max_its": 200,
+            "nl_abs_tol": 1e-3,
+            "nl_rel_tol": 1e-3,
+            **kwargs
+        }
+        for k, v in params.items():
+            exec_block.add_param(k, v)
+            
+        ts_block = MooseBlock("TimeStepper", block_type="ConstantDT")
+        ts_block.add_param("dt", dt)
+        exec_block.add_sub_block(ts_block)
+        return self
+
+    def add_optimization_problem_block(self) -> 'OptimizationLayeredModelBuilder':
+        prob_block = self._get_or_create_toplevel_moose_block("Problem")
+        prob_block.add_param("nl_sys_names", "'nl0 adjoint'")
+        prob_block.add_param("kernel_coverage_check", False)
+        return self
+
+    def add_optimization_reporters_and_dirac(self, measurement_variable: str = "disp_y") -> 'OptimizationLayeredModelBuilder':
+        reporters_block = self._get_or_create_toplevel_moose_block("Reporters")
+        
+        data_rep = MooseBlock("data", block_type="OptimizationData")
+        data_rep.add_param("objective_name", "objective_value")
+        data_rep.add_param("variable", measurement_variable)
+        data_rep.add_param("outputs", "none")
+        reporters_block.add_sub_block(data_rep)
+
+        params_rep = MooseBlock("params", block_type="ConstantReporter")
+        layer_count = len(self.casing_config.layers) if self.casing_config else 1
+        param_names = " ".join([f"perm_{i+1}" for i in range(layer_count)])
+        param_values = "; ".join(["1E-15"] * layer_count)
+        params_rep.add_param("real_vector_names", f"'{param_names}'")
+        params_rep.add_param("real_vector_values", f"'{param_values}'")
+        params_rep.add_param("outputs", "none")
+        reporters_block.add_sub_block(params_rep)
+
+        dirac_block = self._get_or_create_toplevel_moose_block("DiracKernels")
+        misfit = MooseBlock("misfit", block_type="ReporterTimePointSource")
+        misfit.add_param("variable", f"{measurement_variable}_adjoint")
+        misfit.add_param("value_name", "data/misfit_values")
+        misfit.add_param("x_coord_name", "data/measurement_xcoord")
+        misfit.add_param("y_coord_name", "data/measurement_ycoord")
+        misfit.add_param("z_coord_name", "data/measurement_zcoord")
+        misfit.add_param("time_name", "data/measurement_time")
+        dirac_block.add_sub_block(misfit)
+
+        return self
+
+    def generate_optimization_master_file(self, 
+                                          output_filepath: str, 
+                                          forward_input_file: str, 
+                                          measurement_csv: str,
+                                          initial_conds: List[float],
+                                          lower_bounds: List[float],
+                                          upper_bounds: List[float]):
+        """
+        Generates the main optimization multi-app input file.
+        """
+        blocks = []
+        
+        opt_block = MooseBlock("Optimization")
+        blocks.append(opt_block)
+        
+        opt_rep = MooseBlock("OptimizationReporter", block_type="GeneralOptimization")
+        opt_rep.add_param("objective_name", "objective_value")
+        
+        layer_count = len(self.casing_config.layers) if self.casing_config else 1
+        param_names = " ".join([f"perm_{i+1}" for i in range(layer_count)])
+        opt_rep.add_param("parameter_names", f"'{param_names}'")
+        
+        num_values = " ".join(["1"] * layer_count)
+        opt_rep.add_param("num_values", f"'{num_values}'")
+        
+        opt_rep.add_param("initial_condition", f"'{'; '.join(map(str, initial_conds))}'")
+        opt_rep.add_param("lower_bounds", f"'{'; '.join(map(str, lower_bounds))}'")
+        opt_rep.add_param("upper_bounds", f"'{'; '.join(map(str, upper_bounds))}'")
+        blocks.append(opt_rep)
+        
+        reporters = MooseBlock("Reporters")
+        main_rep = MooseBlock("main", block_type="OptimizationData")
+        main_rep.add_param("measurement_file", f"'{measurement_csv}'")
+        main_rep.add_param("file_xcoord", "measurement_xcoord")
+        main_rep.add_param("file_ycoord", "measurement_ycoord")
+        main_rep.add_param("file_zcoord", "measurement_zcoord")
+        main_rep.add_param("file_time", "measurement_time")
+        main_rep.add_param("file_value", "measurement_values")
+        reporters.add_sub_block(main_rep)
+        blocks.append(reporters)
+        
+        multiapps = MooseBlock("MultiApps")
+        forward_app = MooseBlock("forward", block_type="FullSolveMultiApp")
+        forward_app.add_param("input_files", forward_input_file)
+        forward_app.add_param("execute_on", "FORWARD")
+        multiapps.add_sub_block(forward_app)
+        blocks.append(multiapps)
+        
+        transfers = MooseBlock("Transfers")
+        
+        to_forward = MooseBlock("to_forward", block_type="MultiAppReporterTransfer")
+        to_forward.add_param("to_multi_app", "forward")
+        
+        from_reps = [
+            "main/measurement_xcoord",
+            "main/measurement_ycoord",
+            "main/measurement_zcoord",
+            "main/measurement_time",
+            "main/measurement_values"
+        ]
+        to_reps = [
+            "data/measurement_xcoord",
+            "data/measurement_ycoord",
+            "data/measurement_zcoord",
+            "data/measurement_time",
+            "data/measurement_values"
+        ]
+        for i in range(layer_count):
+            from_reps.append(f"OptimizationReporter/perm_{i+1}")
+            to_reps.append(f"params/perm_{i+1}")
+            
+        to_forward.add_param("from_reporters", f"'{chr(10).join(from_reps)}'")
+        to_forward.add_param("to_reporters", f"'{chr(10).join(to_reps)}'")
+        transfers.add_sub_block(to_forward)
+        
+        from_forward = MooseBlock("from_forward", block_type="MultiAppReporterTransfer")
+        from_forward.add_param("from_multi_app", "forward")
+        
+        from_reps_fwd = ["data/objective_value"]
+        to_reps_fwd = ["OptimizationReporter/objective_value"]
+        if self.casing_config:
+            for layer in self.casing_config.layers:
+                from_reps_fwd.append(f"grad_perm_{layer.name}/inner_product")
+        for i in range(layer_count):
+            to_reps_fwd.append(f"OptimizationReporter/grad_perm_{i+1}")
+            
+        from_forward.add_param("from_reporters", f"'{chr(10).join(from_reps_fwd)}'")
+        from_forward.add_param("to_reporters", f"'{chr(10).join(to_reps_fwd)}'")
+        transfers.add_sub_block(from_forward)
+        blocks.append(transfers)
+        
+        exec_block = MooseBlock("Executioner", block_type="Optimize")
+        exec_block.add_param("tao_solver", "taobqnls")
+        exec_block.add_param("petsc_options_iname", "'-tao_gatol -tao_grtol -tao_gttol'")
+        exec_block.add_param("petsc_options_value", "'0 0 0'")
+        blocks.append(exec_block)
+        
+        outputs = MooseBlock("Outputs")
+        outputs.add_param("csv", True)
+        outputs.add_param("console", True)
+        blocks.append(outputs)
+        
+        rendered = [block.render(indent_level=0) + "\n[]" for block in blocks]
+        
+        with open(output_filepath, 'w') as f:
+            f.write(f"# Optimization Master File generated by OptimizationLayeredModelBuilder\n\n")
+            f.write("\n\n".join(rendered))
+        print(f"Optimization master file generated: {output_filepath}")
+
+    def add_linear_pressure_boundary(self, 
+                                     boundary_name: str, 
+                                     bottom_left: Tuple[float, float, float], 
+                                     top_right: Tuple[float, float, float],
+                                     pressure_function_name: str,
+                                     pressure_variable: str = "pp") -> 'OptimizationLayeredModelBuilder':
+        """
+        Creates a linear boundary using a BoundingBoxNodeSetGenerator and applies a pressure-time curve.
+        """
+        # 1. Create the nodeset
+        params = {
+            "bottom_left": f"'{bottom_left[0]} {bottom_left[1]} {bottom_left[2]}'",
+            "top_right": f"'{top_right[0]} {top_right[1]} {top_right[2]}'",
+            "new_boundary": boundary_name
+        }
+        self._add_generic_mesh_generator(f"{boundary_name}_generator", "BoundingBoxNodeSetGenerator", params)
+        
+        # 2. Add boundary condition
+        self.add_boundary_condition(
+            name=f"{boundary_name}_pressure_bc",
+            bc_type="FunctionDirichletBC",
+            variable=pressure_variable,
+            boundary_name=boundary_name,
+            params={"function": pressure_function_name}
+        )
+        return self
 
 if __name__ == '__main__':
     import os
