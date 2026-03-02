@@ -4,4 +4,4 @@
 # for MOOSE to perform optimization tasks.
 # Shenyao Jin, 02/09/2026
 
-from fiberis.moose import MooseApp
+from fiberis.moose.runner import MooseRunner
