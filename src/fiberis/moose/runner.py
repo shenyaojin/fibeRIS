@@ -47,7 +47,8 @@ class MooseRunner:
             moose_env_vars: Optional[Dict[str, str]] = None,
             log_file_name: Optional[str] = "log.txt",
             stream_output: bool = True,
-            clean_output_dir: bool = True) -> Tuple[bool, str, str]:
+            clean_output_dir: bool = True,
+            cli_args: Optional[List[str]] = None) -> Tuple[bool, str, str]:
         """
         Runs a MOOSE simulation and optionally logs STDOUT.
 
@@ -69,6 +70,7 @@ class MooseRunner:
             clean_output_dir (bool): If True (default), the output directory will be removed
                                      before the simulation to ensure a clean run. If False,
                                      existing files will be preserved.
+            cli_args (Optional[List[str]]): Alias for additional_args.
 
         Returns:
             Tuple[bool, str, str]: A tuple containing:
@@ -76,6 +78,9 @@ class MooseRunner:
                                    - str: The standard output from the MOOSE process.
                                    - str: The standard error from the MOOSE process.
         """
+        # Support both naming conventions
+        if cli_args and not additional_args:
+            additional_args = cli_args
         if not os.path.exists(input_file_path):
             raise FileNotFoundError(f"Original input file not found: {input_file_path}")
 
