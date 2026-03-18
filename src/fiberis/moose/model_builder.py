@@ -386,11 +386,14 @@ class ModelBuilder:
             current_y_bottom += layer.height
             next_block_id += 1
             
-        # 4. Define the injection well as a nodeset
-        self.add_nodeset_by_coord(
+        # 4. Define the injection well as a linear nodeset (vertical well)
+        # Use a very thin bounding box to capture all nodes at the well's x-coordinate across the full height
+        eps = 1e-6
+        self.add_nodeset_by_bbox(
             nodeset_op_name="injection_well_nodes",
             new_boundary_name=self.casing_config.injection_well_name,
-            coordinates=(self.casing_config.injection_well_x_coord, 0, 0) # Assuming injection at y=0
+            bottom_left=(self.casing_config.injection_well_x_coord - eps, ymin, 0),
+            top_right=(self.casing_config.injection_well_x_coord + eps, ymax, 0)
         )
 
         # Finalize by renaming blocks (the add_srv_zone_2d calls have populated the map)
@@ -464,6 +467,48 @@ class ModelBuilder:
         print("Warning: set_main_domain_parameters_2d is deprecated. Use build_stitched_mesh_for_fractures instead.")
         return self
 
+    def add_named_boundary(self, name: str, start_coord: Tuple[float, ...],
+                             end_coord: Tuple[float, ...]) -> 'ModelBuilder':
+        """
+        Add a named boundary (sideset) using SideSetsAroundBoundingBoxGenerator.
+
+        :param name: Name for the boundary.
+        :param start_coord: Start coordinate (bottom-left) as a tuple of floats.
+        :param end_coord: End coordinate (top-right) as a tuple of floats.
+        :return: self, allowing method chaining.
+        """
+        params = {"boundary_names": name,
+                  "bottom_left": ' '.join(map(str, start_coord)),
+                  "top_right": ' '.join(map(str, end_coord))}
+        self._add_generic_mesh_generator(f"sideset_{name}", "SideSetsAroundBoundingBoxGenerator", params)
+        if 'boundaries' not in self.geometry_info:
+            self.geometry_info['boundaries'] = []
+        self.geometry_info['boundaries'].append({'name': name, 'start': start_coord, 'end': end_coord})
+        return self
+
+    def add_nodeset_by_bbox(self, nodeset_op_name: str, new_boundary_name: str,
+                           bottom_left: Union[Tuple[float, ...], str],
+                           top_right: Union[Tuple[float, ...], str], **additional_params) -> 'ModelBuilder':
+        """
+        Add a nodeset (boundary) within a bounding box using BoundingBoxNodeSetGenerator.
+
+        :param nodeset_op_name: Name for the nodeset operation.
+        :param new_boundary_name: Name to assign to the new boundary.
+        :param bottom_left: Bottom-left coordinates as a tuple of floats or a string.
+        :param top_right: Top-right coordinates as a tuple of floats or a string.
+        :param additional_params: Additional parameters for the BoundingBoxNodeSetGenerator.
+        :return: self, allowing method chaining.
+        """
+        params = {"new_boundary": new_boundary_name,
+                  "bottom_left": ' '.join(map(str, bottom_left)) if isinstance(bottom_left, tuple) else bottom_left,
+                  "top_right": ' '.join(map(str, top_right)) if isinstance(top_right, tuple) else top_right,
+                  **additional_params}
+        self._add_generic_mesh_generator(nodeset_op_name, "BoundingBoxNodeSetGenerator", params)
+        if 'nodesets' not in self.geometry_info:
+            self.geometry_info['nodesets'] = []
+        self.geometry_info['nodesets'].append({'name': new_boundary_name, 'bottom_left': bottom_left, 'top_right': top_right})
+        return self
+
     def add_nodeset_by_coord(self, nodeset_op_name: str, new_boundary_name: str,
                              coordinates: Union[Tuple[float, ...], str], **additional_params) -> 'ModelBuilder':
         """
@@ -482,6 +527,33 @@ class ModelBuilder:
         if 'nodesets' not in self.geometry_info:
             self.geometry_info['nodesets'] = []
         self.geometry_info['nodesets'].append({'name': new_boundary_name, 'coordinates': coordinates})
+        return self
+
+    def add_linear_pressure_boundary(self, 
+                                     boundary_name: str, 
+                                     bottom_left: Tuple[float, float, float], 
+                                     top_right: Tuple[float, float, float],
+                                     pressure_function_name: str,
+                                     pressure_variable: str = "pp") -> 'ModelBuilder':
+        """
+        Creates a linear boundary using a BoundingBoxNodeSetGenerator and applies a pressure-time curve.
+        """
+        # 1. Create the nodeset
+        self.add_nodeset_by_bbox(
+            nodeset_op_name=f"{boundary_name}_generator",
+            new_boundary_name=boundary_name,
+            bottom_left=bottom_left,
+            top_right=top_right
+        )
+        
+        # 2. Add boundary condition
+        self.add_boundary_condition(
+            name=f"{boundary_name}_pressure_bc",
+            bc_type="FunctionDirichletBC",
+            variable=pressure_variable,
+            boundary_name=boundary_name,
+            params={"function": pressure_function_name}
+        )
         return self
 
     # Kernel functions. PLEASE START FROM HERE FOR ADDING KERNELS. -- Shenyao
@@ -2145,33 +2217,6 @@ class OptimizationLayeredModelBuilder(ModelBuilder):
             f.write(f"# Optimization Master File generated by OptimizationLayeredModelBuilder\n\n")
             f.write("\n\n".join(rendered))
         print(f"Optimization master file generated: {output_filepath}")
-
-    def add_linear_pressure_boundary(self, 
-                                     boundary_name: str, 
-                                     bottom_left: Tuple[float, float, float], 
-                                     top_right: Tuple[float, float, float],
-                                     pressure_function_name: str,
-                                     pressure_variable: str = "pp") -> 'OptimizationLayeredModelBuilder':
-        """
-        Creates a linear boundary using a BoundingBoxNodeSetGenerator and applies a pressure-time curve.
-        """
-        # 1. Create the nodeset
-        params = {
-            "bottom_left": f"'{bottom_left[0]} {bottom_left[1]} {bottom_left[2]}'",
-            "top_right": f"'{top_right[0]} {top_right[1]} {top_right[2]}'",
-            "new_boundary": boundary_name
-        }
-        self._add_generic_mesh_generator(f"{boundary_name}_generator", "BoundingBoxNodeSetGenerator", params)
-        
-        # 2. Add boundary condition
-        self.add_boundary_condition(
-            name=f"{boundary_name}_pressure_bc",
-            bc_type="FunctionDirichletBC",
-            variable=pressure_variable,
-            boundary_name=boundary_name,
-            params={"function": pressure_function_name}
-        )
-        return self
 
 if __name__ == '__main__':
     import os
