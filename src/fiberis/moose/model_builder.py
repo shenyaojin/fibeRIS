@@ -2045,12 +2045,16 @@ class OptimizationLayeredModelBuilder(ModelBuilder):
         mat_block.add_sub_block(stress_mat)
 
         vol_strain_mat = MooseBlock("vol_strain", "PorousFlowVolumetricStrain")
-        vol_strain_mat.add_param("displacements", ' '.join(displacements))
         mat_block.add_sub_block(vol_strain_mat)
 
         return self
 
-    def add_optimization_executioner_block(self, end_time: float, dt: float, **kwargs) -> 'OptimizationLayeredModelBuilder':
+    def add_optimization_executioner_block(self,
+                                          end_time: float,
+                                          time_stepper_type: str = "ConstantDT",
+                                          dt: Optional[float] = None,
+                                          stepper_config: Optional[Union[AdaptiveTimeStepperConfig, TimeSequenceStepper]] = None,
+                                          **kwargs) -> 'OptimizationLayeredModelBuilder':
         exec_block = self._get_or_create_toplevel_moose_block("Executioner")
         params = {
             "type": "TransientAndAdjoint",
@@ -2068,8 +2072,17 @@ class OptimizationLayeredModelBuilder(ModelBuilder):
         for k, v in params.items():
             exec_block.add_param(k, v)
             
-        ts_block = MooseBlock("TimeStepper", block_type="ConstantDT")
-        ts_block.add_param("dt", dt)
+        ts_block = MooseBlock("TimeStepper", block_type=time_stepper_type)
+        
+        if time_stepper_type == 'TimeSequenceStepper':
+            if not isinstance(stepper_config, TimeSequenceStepper):
+                raise TypeError("stepper_config must be a TimeSequenceStepper.")
+            ts_block.add_param("time_sequence", f"'{stepper_config.time_sequence}'")
+        else:
+            if dt is None:
+                raise ValueError("dt is required for ConstantDT.")
+            ts_block.add_param("dt", dt)
+            
         exec_block.add_sub_block(ts_block)
         return self
 
