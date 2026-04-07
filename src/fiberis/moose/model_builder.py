@@ -2086,6 +2086,31 @@ class OptimizationLayeredModelBuilder(ModelBuilder):
         exec_block.add_sub_block(ts_block)
         return self
 
+    def add_preconditioning_block(self, **kwargs) -> 'OptimizationLayeredModelBuilder':
+        """
+        Overrides the base class preconditioning block with a multi-system
+        preconditioner for optimization problems (nl0 + adjoint).
+        """
+        precond_block = self._get_or_create_toplevel_moose_block("Preconditioning")
+
+        nl0_block = MooseBlock("nl0", block_type="SMP")
+        nl0_block.add_param("nl_sys", "nl0")
+        nl0_block.add_param("petsc_options_iname", "'-pc_type -pc_factor_mat_solver_package'")
+        nl0_block.add_param("petsc_options_value", "'lu mumps'")
+        precond_block.add_sub_block(nl0_block)
+
+        adjoint_block = MooseBlock("adjoint", block_type="SMP")
+        adjoint_block.add_param("nl_sys", "adjoint")
+        adjoint_block.add_param("petsc_options_iname", "'-pc_type -pc_factor_mat_solver_package'")
+        adjoint_block.add_param("petsc_options_value", "'lu mumps'")
+        precond_block.add_sub_block(adjoint_block)
+
+        for p_name, p_val in kwargs.items():
+            precond_block.add_param(p_name, p_val)
+
+        print("Info: Added [Preconditioning] block for optimization (nl0 + adjoint).")
+        return self
+
     def add_optimization_problem_block(self) -> 'OptimizationLayeredModelBuilder':
         prob_block = self._get_or_create_toplevel_moose_block("Problem")
         prob_block.add_param("nl_sys_names", "'nl0 adjoint'")
