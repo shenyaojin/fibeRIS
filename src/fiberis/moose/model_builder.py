@@ -985,14 +985,14 @@ class ModelBuilder:
     def add_piecewise_function_from_data1d(self, name: str, source_data1d: core1D.Data1D,
                                            other_params: Optional[Dict[str, Any]] = None) -> 'ModelBuilder':
         """
-        Add a PiecewiseConstant function to the [Functions] block from a Data1D object.
+        Add a PiecewiseLinear function to the [Functions] block from a Data1D object.
 
         This method creates a MOOSE function that can be used for time-dependent
         boundary conditions, source terms, or other time-varying parameters.
 
         :param name: Name for the function.
         :param source_data1d: Data1D object containing time axis and data values.
-        :param other_params: Optional additional parameters for the PiecewiseConstant function.
+        :param other_params: Optional additional parameters for the PiecewiseLinear function.
         :return: self, allowing method chaining.
         """
         if not isinstance(source_data1d, core1D.Data1D):
@@ -1000,14 +1000,14 @@ class ModelBuilder:
         if source_data1d.taxis is None or source_data1d.data is None:
             raise ValueError(f"Data1D object '{source_data1d.name or 'Unnamed'}' needs 'taxis' and 'data'.")
         functions_main_block = self._get_or_create_toplevel_moose_block("Functions")
-        func_sub_block = MooseBlock(name, block_type="PiecewiseConstant")
+        func_sub_block = MooseBlock(name, block_type="PiecewiseLinear")
         func_sub_block.add_param("x", ' '.join(map(str, source_data1d.taxis)))
         func_sub_block.add_param("y", ' '.join(map(str, source_data1d.data)))
         if other_params:
             for p_name, p_val in other_params.items():
                 func_sub_block.add_param(p_name, p_val)
         functions_main_block.add_sub_block(func_sub_block)
-        print(f"Info: Added PiecewiseConstant Function '{name}' from Data1D source.")
+        print(f"Info: Added PiecewiseLinear Function '{name}' from Data1D source.")
         return self
 
     # --- Fluid Properties ---
@@ -1889,7 +1889,7 @@ class OptimizationLayeredModelBuilder(ModelBuilder):
             raise ValueError("CasingConfig not set.")
 
         funcs_block = self._get_or_create_toplevel_moose_block("Functions")
-        
+
         func_kyy = MooseBlock("func_kyy", block_type="ParsedFunction")
         func_kyy.add_param("expression", f"'{perm_y}'")
         funcs_block.add_sub_block(func_kyy)
@@ -2094,12 +2094,14 @@ class OptimizationLayeredModelBuilder(ModelBuilder):
         precond_block = self._get_or_create_toplevel_moose_block("Preconditioning")
 
         nl0_block = MooseBlock("nl0", block_type="SMP")
+        nl0_block.add_param("full", True)
         nl0_block.add_param("nl_sys", "nl0")
         nl0_block.add_param("petsc_options_iname", "'-pc_type -pc_factor_mat_solver_package'")
         nl0_block.add_param("petsc_options_value", "'lu mumps'")
         precond_block.add_sub_block(nl0_block)
 
         adjoint_block = MooseBlock("adjoint", block_type="SMP")
+        adjoint_block.add_param("full", True)
         adjoint_block.add_param("nl_sys", "adjoint")
         adjoint_block.add_param("petsc_options_iname", "'-pc_type -pc_factor_mat_solver_package'")
         adjoint_block.add_param("petsc_options_value", "'lu mumps'")
@@ -2239,9 +2241,10 @@ class OptimizationLayeredModelBuilder(ModelBuilder):
         blocks.append(transfers)
         
         exec_block = MooseBlock("Executioner", block_type="Optimize")
-        exec_block.add_param("tao_solver", "taobqnls")
-        exec_block.add_param("petsc_options_iname", "'-tao_gatol -tao_grtol -tao_gttol'")
-        exec_block.add_param("petsc_options_value", "'0 0 0'")
+        exec_block.add_param("tao_solver", "'taobqnls'")
+        exec_block.add_param("petsc_options_iname", "'-tao_gatol'")
+        exec_block.add_param("petsc_options_value", "'1e50'")
+        exec_block.add_param("verbose", True)
         blocks.append(exec_block)
         
         outputs = MooseBlock("Outputs")
