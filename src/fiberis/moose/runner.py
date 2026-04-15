@@ -135,7 +135,7 @@ class MooseRunner:
             command.extend([mpiexec_executable, "-n", str(num_processors)])
 
         command.append(self.moose_executable_path)
-        command.extend(["-i", input_file_path_for_cmd])
+        command.extend(["-i", input_file_path_for_cmd, "--n-threads=1"])
 
         if additional_args:
             command.extend(additional_args)
@@ -145,6 +145,14 @@ class MooseRunner:
         print(f"Working directory: {cwd}")
 
         current_env = os.environ.copy()
+        # Force single-thread per MPI rank to prevent over-subscription
+        current_env.update({
+            "OMP_NUM_THREADS": "1",
+            "TBB_NUM_THREADS": "1",
+            "MKL_NUM_THREADS": "1",
+            "OPENBLAS_NUM_THREADS": "1",
+            "VECLIB_MAXIMUM_THREADS": "1",
+        })
         if moose_env_vars:
             current_env.update(moose_env_vars)
 

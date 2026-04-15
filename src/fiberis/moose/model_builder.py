@@ -1952,10 +1952,11 @@ class OptimizationLayeredModelBuilder(ModelBuilder):
             aux_kernels_block.add_sub_block(aux_kernel)
 
             # VectorPostprocessor for gradient
-            vpp = MooseBlock(f"grad_{func_name}", block_type="ElementOptimizationDiffusionCoefFunctionInnerProduct")
+            vpp = MooseBlock(f"grad_{func_name}", block_type="ElementOptimizationAnisotropicDiffusionInnerProduct")
             vpp.add_param("variable", "pp_adjoint")
             vpp.add_param("forward_variable", "pp")
             vpp.add_param("function", func_name)
+            vpp.add_param("component", 0)
             vpp.add_param("block", layer_name)
             vpp.add_param("execute_on", "ADJOINT_TIMESTEP_END")
             vpp.add_param("outputs", "none")
