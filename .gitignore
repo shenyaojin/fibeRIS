@@ -185,3 +185,7 @@ testfile/
 
 # Output files
 examples/output/
+
+# Ruff cache
+__ruff_cache__/
+.ruff_cache/
