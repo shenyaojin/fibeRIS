@@ -11,9 +11,16 @@ class MOOSETensorFromData2D(DataIO):
         self.tensor_data_list: List[CoreTensor] = []
 
     def read(self, strain_xx: Data2D, strain_yy: Data2D, strain_xy: Data2D):
-        
+        self.tensor_data_list = []
+
         if not (strain_xx.data.shape == strain_yy.data.shape == strain_xy.data.shape):
             raise ValueError("Input Data2D objects must have the same shape.")
+        if not (np.array_equal(strain_xx.taxis, strain_yy.taxis) and
+                np.array_equal(strain_xx.taxis, strain_xy.taxis)):
+            raise ValueError("Input Data2D objects must have the same time axis.")
+        if not (np.array_equal(strain_xx.daxis, strain_yy.daxis) and
+                np.array_equal(strain_xx.daxis, strain_xy.daxis)):
+            raise ValueError("Input Data2D objects must have the same depth axis.")
 
         num_points = strain_xx.data.shape[0]
         num_times = strain_xx.data.shape[1]

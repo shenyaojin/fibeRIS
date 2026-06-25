@@ -29,7 +29,13 @@ class MOOSEVectorPostProcessorReader(core.DataIO):
         self.variable_name: Optional[str] = None
         self.sampler_name: Optional[str] = None
 
-    def read(self, directory: str, post_processor_id: int = 0, variable_index: int = 1):
+    def read(
+        self,
+        directory: str,
+        post_processor_id: int = 0,
+        variable_index: int = 1,
+        variable_name: Optional[str] = None,
+    ):
         """
         Loads data by auto-discovering all vector samplers and the time series file.
         It uses files ending in '_0000.csv' to identify each unique sampler.
@@ -40,6 +46,8 @@ class MOOSEVectorPostProcessorReader(core.DataIO):
                                      sorted alphabetically by their base name. Defaults to 0.
             variable_index (int): The column index of the variable to read from the vector CSVs.
                                   Defaults to 1 (the second column, after 'id').
+            variable_name (str, optional): Column name of the variable to read. If provided,
+                                           this takes precedence over variable_index.
         """
         self.record_log(f"Starting to load data from directory: {directory}", level="INFO")
 
@@ -105,14 +113,20 @@ class MOOSEVectorPostProcessorReader(core.DataIO):
                     num_spatial_points = len(self.xaxis) if self.xaxis is not None else 0
                     slice_data = np.full(num_spatial_points, np.nan)
                 else:
-                    slice_data = df.iloc[:, variable_index].to_numpy()
+                    selected_index = variable_index
+                    if variable_name is not None:
+                        if variable_name not in df.columns:
+                            raise KeyError(f"Column '{variable_name}' not found in {file_path}.")
+                        selected_index = df.columns.get_loc(variable_name)
+
+                    slice_data = df.iloc[:, selected_index].to_numpy()
                     if not spatial_axes_established:
                         self.xaxis = df.iloc[:, -3].to_numpy()
                         self.yaxis = df.iloc[:, -2].to_numpy()
                         self.daxis = np.sqrt(
                             (self.xaxis - self.xaxis[0])**2 + (self.yaxis - self.yaxis[0])**2
                         )
-                        self.variable_name = df.columns[variable_index]
+                        self.variable_name = df.columns[selected_index]
                         spatial_axes_established = True
             except Exception as e:
                 self.record_log(f"Could not process file {file_path}. Error: {e}", level="WARNING")

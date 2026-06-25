@@ -128,6 +128,9 @@ class Tensor2D:
     def rotate_tensor(self, degree: float, in_radians: bool = False) -> 'Tensor2D':
         """
         Rotates the tensor data in-place by a given angle.
+
+        This applies the active tensor rotation R T R^T. For extracting the
+        strain measured along a fiber, prefer get_directional_component().
         """
         if not in_radians:
             angle = np.deg2rad(degree)
@@ -150,6 +153,59 @@ class Tensor2D:
         self.data = np.einsum('ik,dtkj,lj->dtil', R, self.data, R.T)
         self.history.add_record(f"Rotated tensor data by {degree:.2f} degrees.", level="INFO")
         return self
+
+    def get_directional_component(
+            self,
+            angle: float,
+            in_radians: bool = False,
+            reference_axis: str = "x",
+            clockwise: bool = False,
+            name: Optional[str] = None) -> Data2D:
+        """
+        Project each tensor onto a line direction and return n^T T n.
+
+        Args:
+            angle: Direction angle. By default this is measured from +x.
+            in_radians: If True, ``angle`` is already in radians.
+            reference_axis: ``"x"`` for angle from +x, or ``"y"`` for angle
+                from +y. The fiber sampler in the Fervo tensile-fault model
+                uses angle from +y.
+            clockwise: If True, positive angle is clockwise from the reference
+                axis. This matches the Fervo fiber sampler geometry.
+            name: Optional output Data2D name.
+
+        Returns:
+            Data2D containing the scalar directional tensor component.
+        """
+        if self.data is None or self.dim is None:
+            raise ValueError("Data or dimension is not set.")
+        if self.dim != 2:
+            raise ValueError("Directional component is currently implemented for 2D tensors only.")
+
+        theta = angle if in_radians else np.deg2rad(angle)
+        reference_axis = reference_axis.lower()
+        if reference_axis == "x":
+            theta_from_x = -theta if clockwise else theta
+        elif reference_axis == "y":
+            theta_from_x = np.pi / 2.0 - theta if clockwise else np.pi / 2.0 + theta
+        else:
+            raise ValueError("reference_axis must be 'x' or 'y'.")
+
+        direction = np.array([np.cos(theta_from_x), np.sin(theta_from_x)])
+        projected_data = np.einsum("i,dtij,j->dt", direction, self.data, direction)
+        output_name = name or f"{self.name}_directional_component"
+        data2d_obj = Data2D(
+            data=projected_data,
+            taxis=self.taxis,
+            daxis=self.daxis,
+            start_time=self.start_time,
+            name=output_name
+        )
+        self.history.add_record(
+            f"Projected tensor data along {angle:.2f} degrees from +{reference_axis}.",
+            level="INFO"
+        )
+        return data2d_obj
 
     def select_time(self, start: Union[datetime.datetime, float, int], end: Union[datetime.datetime, float, int]) -> 'Tensor2D':
         """Crop data along the time axis."""

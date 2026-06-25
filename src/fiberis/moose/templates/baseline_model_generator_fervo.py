@@ -39,7 +39,10 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
     :param srv_height_ft: The height of the SRV in feet. Defaults to 20.
     :param hf_length_ft: The length of the hydraulic fracture in feet. Defaults to 250.
     :param hf_height_ft: The height of the hydraulic fracture in feet. Defaults to 0.2.
-    :param initial_pressure: The initial pressure of the model. Defaults to 5.17E7.
+    :param pressure_profile_path: Path to the injection pressure profile in fiberis npz format.
+        Defaults to data_fervo/fiberis_format/post_processing/synthetic_data_simulation.npz.
+        Values are assumed to be in psi and are converted to Pa internally. The first
+        converted pressure value is used as the model initial pressure.
     :param monitoring_point_shift_ft: The shift of the monitoring point in feet. Defaults to 80.
     :param start_offset_y: The start offset of the fiber sampler in the y-direction. Defaults to 20.
     :param end_offset_y: The end offset of the fiber sampler in the y-direction. Defaults to 20.
@@ -49,10 +52,14 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
     # Define default parameters
     conversion_factor = 0.3048  # feet to meters
 
-    # "data/fiberis_format/post_processing/injection_pressure_full_profile.npz" <- injection pressure profile
-    # Load gauge data for MOOSE, I have already packed the data in fiberis format.
+    # Load the averaged synthetic pressure curve for MOOSE. This file is stored in
+    # psi and converted to Pa here before it is used for the injection BC and ICs.
+    pressure_profile_path = kwargs.get(
+        "pressure_profile_path",
+        "data_fervo/fiberis_format/post_processing/synthetic_data_simulation.npz",
+    )
     gauge_data_for_moose = Data1DGauge()
-    gauge_data_for_moose.load_npz("data_fervo/fiberis_format/post_processing/gauge_data_for_simulation_synthetic_fault_pressure.npz")
+    gauge_data_for_moose.load_npz(pressure_profile_path)
     gauge_data_for_moose.data = 6894.76 * gauge_data_for_moose.data  # Convert psi to Pa
 
     # Start building the model
@@ -87,7 +94,7 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
     srv_mats = ZoneMaterialProperties(porosity=0.1, permeability=srv_perm_str)
     fracture_mats = ZoneMaterialProperties(porosity=0.16, permeability=fracture_perm_str)
 
-    # Define Initial Conditions
+    # Define Initial Conditions from the first value of the injection curve.
     matrix_pressure_ic = InitialConditionConfig(
         name="initial_pressure_matrix",
         ic_type="ConstantIC",
@@ -168,7 +175,11 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
         confine_disp_y_boundaries="top bottom"
     )
 
-    builder.add_standard_tensor_aux_vars_and_kernels({"stress": "stress", "total_strain": "strain"})
+    builder.add_standard_tensor_aux_vars_and_kernels({
+        "stress": "stress",
+        "total_strain": "strain",
+        "strain_rate": "strain_rate",
+    })
 
     # Add post-processors to model builder
     # This part is from baseline_model_builder.py (v1) which provides better post-processing options.
@@ -271,6 +282,17 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
             )
         )
 
+        builder.add_postprocessor(
+            LineValueSamplerConfig(
+                name=f"fiber_strain_rate_sampler_{shift_val_ft}ft",
+                variable="strain_rate_xx strain_rate_yy strain_rate_xy",
+                start_point=start_point,
+                end_point=end_point,
+                num_points=kwargs.get("num_fiber_points", 200),
+                other_params={'sort_by': 'y'}
+            )
+        )
+
     # Time sequence stepper
     total_time = gauge_data_for_moose.taxis[-1] - gauge_data_for_moose.taxis[0]
     # Down sample two dataframes to speed up the simulation.
@@ -325,15 +347,15 @@ def post_processor_info_extractor(**kwargs) -> List[Data2D]:
             pressure_data2d.name = "pressure"
         elif "fiber_strain_sampler" in vector_reader.sampler_name:
             # It's the strain sampler, now extract all components
-            vector_reader.read(directory=output_dir, post_processor_id=i, variable_index=1)
+            vector_reader.read(directory=output_dir, post_processor_id=i, variable_name="strain_xx")
             strain_xx_data2d = vector_reader.to_analyzer()
             strain_xx_data2d.name = "strain_xx"
 
-            vector_reader.read(directory=output_dir, post_processor_id=i, variable_index=2)
+            vector_reader.read(directory=output_dir, post_processor_id=i, variable_name="strain_yy")
             strain_yy_data2d = vector_reader.to_analyzer()
             strain_yy_data2d.name = "strain_yy"
 
-            vector_reader.read(directory=output_dir, post_processor_id=i, variable_index=3)
+            vector_reader.read(directory=output_dir, post_processor_id=i, variable_name="strain_xy")
             strain_xy_data2d = vector_reader.to_analyzer()
             strain_xy_data2d.name = "strain_xy"
 
@@ -347,6 +369,137 @@ def post_processor_info_extractor(**kwargs) -> List[Data2D]:
         raise FileNotFoundError("Could not find and extract 'fiber_strain_sampler' (strain_xy) data.")
 
     return [pressure_data2d, strain_xx_data2d, strain_yy_data2d, strain_xy_data2d]
+
+
+def strain_rate_info_extractor(**kwargs) -> List[Data2D]:
+    """
+    Extract strain-rate components from MOOSE VectorPostprocessor outputs.
+
+    Returns three Data2D objects: strain_rate_xx, strain_rate_yy, and strain_rate_xy.
+    """
+    output_dir = kwargs.get("output_dir")
+    if not output_dir:
+        raise ValueError("output_dir must be provided in kwargs")
+
+    vector_reader = MOOSEVectorPostProcessorReader()
+    max_processor_id, _ = vector_reader.get_max_indices(output_dir)
+
+    strain_rate_xx_data2d = None
+    strain_rate_yy_data2d = None
+    strain_rate_xy_data2d = None
+
+    for i in range(max_processor_id + 1):
+        vector_reader.read(directory=output_dir, post_processor_id=i, variable_index=1)
+
+        if "fiber_strain_rate_sampler" in vector_reader.sampler_name:
+            vector_reader.read(directory=output_dir, post_processor_id=i, variable_name="strain_rate_xx")
+            strain_rate_xx_data2d = vector_reader.to_analyzer()
+            strain_rate_xx_data2d.name = "strain_rate_xx"
+
+            vector_reader.read(directory=output_dir, post_processor_id=i, variable_name="strain_rate_yy")
+            strain_rate_yy_data2d = vector_reader.to_analyzer()
+            strain_rate_yy_data2d.name = "strain_rate_yy"
+
+            vector_reader.read(directory=output_dir, post_processor_id=i, variable_name="strain_rate_xy")
+            strain_rate_xy_data2d = vector_reader.to_analyzer()
+            strain_rate_xy_data2d.name = "strain_rate_xy"
+
+    if strain_rate_xx_data2d is None:
+        raise FileNotFoundError("Could not find and extract 'fiber_strain_rate_sampler' (strain_rate_xx) data.")
+    if strain_rate_yy_data2d is None:
+        raise FileNotFoundError("Could not find and extract 'fiber_strain_rate_sampler' (strain_rate_yy) data.")
+    if strain_rate_xy_data2d is None:
+        raise FileNotFoundError("Could not find and extract 'fiber_strain_rate_sampler' (strain_rate_xy) data.")
+
+    return [strain_rate_xx_data2d, strain_rate_yy_data2d, strain_rate_xy_data2d]
+
+
+def all_line_post_processor_info_extractor(**kwargs) -> List[dict]:
+    """
+    Extract every fiber line VectorPostprocessor result from a MOOSE output directory.
+
+    Each returned record contains the sampler name, sampler type, shift in ft,
+    and one or more Data2D objects. This keeps multiple monitor lines instead of
+    overwriting earlier samplers with the last discovered sampler.
+    """
+    output_dir = kwargs.get("output_dir")
+    if not output_dir:
+        raise ValueError("output_dir must be provided in kwargs")
+
+    vector_reader = MOOSEVectorPostProcessorReader()
+    max_processor_id, _ = vector_reader.get_max_indices(output_dir)
+    records = []
+
+    for i in range(max_processor_id + 1):
+        vector_reader.read(directory=output_dir, post_processor_id=i, variable_index=1)
+        sampler_name = vector_reader.sampler_name
+        if not sampler_name or "fiber_" not in sampler_name:
+            continue
+
+        shift_ft = None
+        if "_sampler_" in sampler_name and sampler_name.endswith("ft"):
+            shift_text = sampler_name.rsplit("_sampler_", 1)[1].removesuffix("ft")
+            try:
+                shift_ft = float(shift_text)
+            except ValueError:
+                shift_ft = None
+
+        if "fiber_pressure_sampler" in sampler_name:
+            pressure = vector_reader.to_analyzer()
+            pressure.name = f"pressure_{shift_ft:g}ft" if shift_ft is not None else "pressure"
+            records.append({
+                "sampler_name": sampler_name,
+                "sampler_type": "pressure",
+                "shift_ft": shift_ft,
+                "pressure": pressure,
+            })
+        elif "fiber_strain_rate_sampler" in sampler_name:
+            vector_reader.read(directory=output_dir, post_processor_id=i, variable_name="strain_rate_xx")
+            strain_rate_xx = vector_reader.to_analyzer()
+            strain_rate_xx.name = f"strain_rate_xx_{shift_ft:g}ft" if shift_ft is not None else "strain_rate_xx"
+
+            vector_reader.read(directory=output_dir, post_processor_id=i, variable_name="strain_rate_yy")
+            strain_rate_yy = vector_reader.to_analyzer()
+            strain_rate_yy.name = f"strain_rate_yy_{shift_ft:g}ft" if shift_ft is not None else "strain_rate_yy"
+
+            vector_reader.read(directory=output_dir, post_processor_id=i, variable_name="strain_rate_xy")
+            strain_rate_xy = vector_reader.to_analyzer()
+            strain_rate_xy.name = f"strain_rate_xy_{shift_ft:g}ft" if shift_ft is not None else "strain_rate_xy"
+
+            records.append({
+                "sampler_name": sampler_name,
+                "sampler_type": "strain_rate",
+                "shift_ft": shift_ft,
+                "strain_rate_xx": strain_rate_xx,
+                "strain_rate_yy": strain_rate_yy,
+                "strain_rate_xy": strain_rate_xy,
+            })
+        elif "fiber_strain_sampler" in sampler_name:
+            vector_reader.read(directory=output_dir, post_processor_id=i, variable_name="strain_xx")
+            strain_xx = vector_reader.to_analyzer()
+            strain_xx.name = f"strain_xx_{shift_ft:g}ft" if shift_ft is not None else "strain_xx"
+
+            vector_reader.read(directory=output_dir, post_processor_id=i, variable_name="strain_yy")
+            strain_yy = vector_reader.to_analyzer()
+            strain_yy.name = f"strain_yy_{shift_ft:g}ft" if shift_ft is not None else "strain_yy"
+
+            vector_reader.read(directory=output_dir, post_processor_id=i, variable_name="strain_xy")
+            strain_xy = vector_reader.to_analyzer()
+            strain_xy.name = f"strain_xy_{shift_ft:g}ft" if shift_ft is not None else "strain_xy"
+
+            records.append({
+                "sampler_name": sampler_name,
+                "sampler_type": "strain",
+                "shift_ft": shift_ft,
+                "strain_xx": strain_xx,
+                "strain_yy": strain_yy,
+                "strain_xy": strain_xy,
+            })
+
+    if not records:
+        raise FileNotFoundError("Could not find any fiber line postprocessor data.")
+
+    return sorted(records, key=lambda item: (item["shift_ft"] is None, item["shift_ft"] or 0.0, item["sampler_type"]))
 
 if __name__ == "__main__":
     print("Don't run this script directly. It is meant to be imported as a module.\n--Shenyao")
