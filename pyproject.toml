@@ -87,23 +87,26 @@ where = ["src"]
 # You can also explicitly list packsages if preferred over find:
 # packages = ["fiberis"]
 
-# Example: Configuration for Black code formatter
-# [tool.black]
-# line-length = 88
-# target-version = ['py39', 'py310', 'py311', 'py312']
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra"
+testpaths = ["tests"]
+filterwarnings = [
+    # Surface deprecations from our own code while keeping third-party noise quiet.
+    "ignore::DeprecationWarning:matplotlib.*",
+]
 
-# Example: Configuration for pytest
-# [tool.pytest.ini_options]
-# minversion = "7.0"
-# addopts = "-ra -q --cov=src/fiberis --cov-report=html"
-# testpaths = [
-#     "tests",
-# ]
+[tool.coverage.run]
+branch = true
+source = ["fiberis"]
 
-# Example: Configuration for MyPy
-# [tool.mypy]
-# python_version = "3.9"
-# warn_return_any = true
-# warn_unused_configs = true
-# ignore_missing_imports = true # Can be helpful initially
-# exclude = ['docs/'] # Exclude directories from type checking
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+
+# MyPy configuration (kept lenient for the initial modernization pass).
+[tool.mypy]
+python_version = "3.10"
+warn_unused_configs = true
+ignore_missing_imports = true
+exclude = ['docs/', 'examples/']
