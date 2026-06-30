@@ -1,0 +1,207 @@
+# Characterization tests for fiberis.moose.input_generator
+#
+# These are golden-master / snapshot tests that pin the CURRENT behavior of the
+# low-level MooseBlock rendering and the generic generate_moose_input() function.
+# Golden output was obtained by RUNNING the code, not by hand-writing MOOSE syntax.
+# Tests must stay GREEN through a pure refactor.
+
+import os
+
+import pytest
+
+from fiberis.moose.input_generator import (
+    MooseBlock,
+    GeneratedMeshGeneratorBlock,
+    FunctionBlock,
+    generate_moose_input,
+)
+
+
+# --- MooseBlock.render() ---------------------------------------------------
+
+def test_empty_block_render():
+    block = MooseBlock("Mesh")
+    assert block.render() == "[Mesh]"
+
+
+def test_block_with_type_and_params_render():
+    block = MooseBlock("gen", block_type="GeneratedMeshGenerator")
+    block.add_param("dim", 2)
+    block.add_param("nx", 10)
+    rendered = block.render()
+    assert rendered == (
+        "[gen]\n"
+        "  type = GeneratedMeshGenerator\n"
+        "  dim = 2\n"
+        "  nx = 10"
+    )
+
+
+def test_format_value_bool_is_lowercased():
+    block = MooseBlock("b")
+    block.add_param("flag", True)
+    block.add_param("other", False)
+    rendered = block.render()
+    assert "flag = true" in rendered
+    assert "other = false" in rendered
+
+
+def test_format_value_numbers_not_quoted():
+    block = MooseBlock("b")
+    block.add_param("i", 5)
+    block.add_param("f", 3.5)
+    rendered = block.render()
+    assert "i = 5" in rendered
+    assert "f = 3.5" in rendered
+
+
+def test_format_value_list_and_tuple_space_joined():
+    block = MooseBlock("b")
+    block.add_param("lst", [1, 2, 3])
+    block.add_param("tup", (4, 5))
+    rendered = block.render()
+    assert "lst = 1 2 3" in rendered
+    assert "tup = 4 5" in rendered
+
+
+def test_format_value_plain_string_gets_single_quoted():
+    block = MooseBlock("b")
+    block.add_param("name", "hello")
+    assert "name = 'hello'" in block.render()
+
+
+def test_format_value_already_quoted_string_passed_through():
+    block = MooseBlock("b")
+    block.add_param("single", "'already'")
+    block.add_param("double", '"alsook"')
+    rendered = block.render()
+    # No double-quoting happens for pre-quoted strings.
+    assert "single = 'already'" in rendered
+    assert 'double = "alsook"' in rendered
+
+
+def test_indent_levels():
+    block = MooseBlock("Top")
+    block.add_param("a", 1)
+    rendered = block.render(indent_level=1)
+    # Top-level line indented by two spaces, params by four.
+    assert rendered.startswith("  [Top]")
+    assert "    a = 1" in rendered
+
+
+def test_nested_sub_block_render_with_closing_tags():
+    top = MooseBlock("Mesh")
+    sub = MooseBlock("gen", block_type="GeneratedMeshGenerator")
+    sub.add_param("dim", 2)
+    top.add_sub_block(sub)
+    rendered = top.render()
+    assert rendered == (
+        "[Mesh]\n"
+        "  [gen]\n"
+        "    type = GeneratedMeshGenerator\n"
+        "    dim = 2\n"
+        "  []"
+    )
+
+
+def test_type_param_not_duplicated_when_block_type_set():
+    # When a block_type is set, an explicit 'type' param is skipped during render.
+    block = MooseBlock("b", block_type="SomeType")
+    block.add_param("type", "ShouldBeIgnored")
+    rendered = block.render()
+    assert "type = SomeType" in rendered
+    assert "ShouldBeIgnored" not in rendered
+
+
+# --- GeneratedMeshGeneratorBlock ------------------------------------------
+
+def test_generated_mesh_generator_block():
+    block = GeneratedMeshGeneratorBlock("base", dim=2, nx=10, ny=20,
+                                        xmax=100.0, ymax=50.0, xmin=0)
+    rendered = block.render()
+    assert "type = GeneratedMeshGenerator" in rendered
+    assert "dim = 2" in rendered
+    assert "nx = 10" in rendered
+    assert "ny = 20" in rendered
+    assert "xmax = 100.0" in rendered
+    assert "ymax = 50.0" in rendered
+    assert "xmin = 0" in rendered
+
+
+# --- FunctionBlock ---------------------------------------------------------
+
+def test_function_block_expression_not_quoted():
+    # FunctionBlock 'expression' is rendered verbatim (no quoting by _format_value).
+    block = FunctionBlock("f", function_type="ParsedFunction", expression="2*x + 1")
+    rendered = block.render()
+    assert "type = ParsedFunction" in rendered
+    assert "expression = 2*x + 1" in rendered
+
+
+def test_function_block_extra_kwargs():
+    block = FunctionBlock("f", function_type="ParsedFunction",
+                          expression="t", vars="t")
+    rendered = block.render()
+    assert "expression = t" in rendered
+    assert "vars = 't'" in rendered
+
+
+# --- generate_moose_input() ------------------------------------------------
+
+def test_generate_moose_input_dict_params(tmp_path):
+    config = {"GlobalParams": {"displacements": "disp_x disp_y"}}
+    out = tmp_path / "out.i"
+    generate_moose_input(config, str(out))
+    assert out.exists()
+    text = out.read_text()
+    assert text.startswith("# MOOSE input file generated by input_generator.py")
+    assert "[GlobalParams]" in text
+    assert "displacements = 'disp_x disp_y'" in text
+    # Top-level block closing tag.
+    assert "[]" in text
+
+
+def test_generate_moose_input_list_subblocks(tmp_path):
+    config = {
+        "Variables": [
+            {"name": "pp", "params": {"initial_condition": 1.0}},
+            {"name": "disp_x"},
+        ]
+    }
+    out = tmp_path / "vars.i"
+    generate_moose_input(config, str(out))
+    text = out.read_text()
+    assert "[Variables]" in text
+    assert "[pp]" in text
+    assert "initial_condition = 1.0" in text
+    assert "[disp_x]" in text
+
+
+def test_generate_moose_input_parsedfunction_special_case(tmp_path):
+    config = {
+        "Functions": [
+            {"name": "myfunc", "type": "ParsedFunction",
+             "params": {"expression": "3*t"}},
+        ]
+    }
+    out = tmp_path / "f.i"
+    generate_moose_input(config, str(out))
+    text = out.read_text()
+    assert "[myfunc]" in text
+    assert "type = ParsedFunction" in text
+    # Expression rendered verbatim (FunctionBlock path).
+    assert "expression = 3*t" in text
+
+
+def test_generate_moose_input_missing_name_raises(tmp_path):
+    config = {"Variables": [{"params": {"x": 1}}]}
+    out = tmp_path / "bad.i"
+    with pytest.raises(ValueError):
+        generate_moose_input(config, str(out))
+
+
+def test_generate_moose_input_bad_type_raises(tmp_path):
+    config = {"Bad": "not a dict or list"}
+    out = tmp_path / "bad2.i"
+    with pytest.raises(TypeError):
+        generate_moose_input(config, str(out))

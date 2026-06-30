@@ -5,7 +5,7 @@
 
 import numpy as np
 from fiberis.io import core
-from fiberis.analyzer.Data1D import Data1DGauge
+from fiberis.analyzer.Data1D.Data1D_Gauge import Data1DGauge
 import os
 
 

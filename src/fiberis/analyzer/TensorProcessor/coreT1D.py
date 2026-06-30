@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import datetime
 from copy import deepcopy
-from typing import Optional, Union, List, Any, Dict
+from typing import Optional, Union, List, Any, Dict, Tuple
 
 # Fiberis imports
 from fiberis.utils.history_utils import InfoManagementSystem

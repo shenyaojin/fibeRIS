@@ -6,7 +6,7 @@
 import numpy as np
 import os
 from fiberis.io import core
-from fiberis.analyzer.Geometry3D import DataG3D
+from fiberis.analyzer.Geometry3D.coreG3D import DataG3D
 
 
 class Mariner3D(core.DataIO):
