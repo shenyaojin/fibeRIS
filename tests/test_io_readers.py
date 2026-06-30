@@ -373,20 +373,24 @@ def test_mariner_rfs_abandoned_is_abstract():
     pytest.skip("reader_mariner_rfs_abandoned is abstract; requires raw vendor data not bundled")
 
 
-# These two modules currently fail to import because of missing names in the
-# fiberis.analyzer package. NOTE: possible bug -- the imported symbols
-# (DataG3D / Data1DGauge) are not exported. Pinned as expected failures.
+# These two modules previously failed to import because they imported a class
+# as if it were a submodule (DataG3D from Geometry3D, Data1DGauge from Data1D).
+# Fixed in docs/modernization_notes.md bugs #2/#3 -- now they import and the
+# reader classes are constructible DataIO subclasses. The raw read() path still
+# needs vendor data we do not bundle.
 @pytest.mark.parametrize(
-    "module_name,missing_symbol",
+    "module_name,class_name",
     [
-        ("reader_mariner_3d", "DataG3D"),
-        ("reader_mariner_gauge1d", "Data1DGauge"),
+        ("reader_mariner_3d", "Mariner3D"),
+        ("reader_mariner_gauge1d", "MarinerGauge1D"),
     ],
 )
-def test_reader_with_broken_import(module_name, missing_symbol):
-    with pytest.raises(ImportError):
-        importlib.import_module(f"fiberis.io.{module_name}")
-    pytest.skip(
-        f"{module_name} currently fails to import (missing {missing_symbol}); "
-        "requires raw vendor data not bundled anyway"
-    )
+def test_previously_broken_reader_now_imports(module_name, class_name):
+    module = importlib.import_module(f"fiberis.io.{module_name}")
+    cls = getattr(module, class_name)
+    instance = cls()
+    from fiberis.io.core import DataIO
+
+    assert isinstance(instance, DataIO)
+    assert hasattr(instance, "read")
+    pytest.skip(f"requires raw vendor data not bundled for {module_name}")

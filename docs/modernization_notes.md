@@ -32,15 +32,18 @@ corrected behavior.
 
 ### High priority — code that cannot run
 
-1. **`TensorProcessor/coreT1D.py` is unimportable.** Uses `Tuple[...]`
-   annotations but never imports `Tuple` (only `Optional, Union, List, Any,
-   Dict`). `import` raises `NameError` at class-definition time, so `Tensor1D`
-   can never be instantiated.
-2. **`io/reader_mariner_3d.py` fails to import** — missing `DataG3D`.
-3. **`io/reader_mariner_gauge1d.py` fails to import** — missing `Data1DGauge`
-   from `fiberis.analyzer`.
+1. ~~**`TensorProcessor/coreT1D.py` is unimportable.**~~ **FIXED.** Used
+   `Tuple[...]` annotations without importing `Tuple`; added it to the `typing`
+   import. `Tensor1D` now imports/instantiates and has full characterization tests.
+2. ~~**`io/reader_mariner_3d.py` fails to import.**~~ **FIXED.** Imported the
+   `DataG3D` *class* as if it were a module; corrected to
+   `from fiberis.analyzer.Geometry3D.coreG3D import DataG3D`.
+3. ~~**`io/reader_mariner_gauge1d.py` fails to import.**~~ **FIXED.** Imported the
+   `Data1DGauge` *class* as if it were a submodule; corrected to
+   `from fiberis.analyzer.Data1D.Data1D_Gauge import Data1DGauge`.
 4. **`io/reader_mariner_rfs_abandoned.py` (`Mariner2DRFS2D`)** does not implement
    the abstract `to_analyzer`, so it cannot be instantiated (`TypeError`).
+   Left as-is — the filename marks it intentionally abandoned.
 
 ### Medium priority — incorrect results
 
