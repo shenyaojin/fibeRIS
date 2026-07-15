@@ -111,18 +111,42 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
     builder.set_matrix_config(MatrixConfig(name="matrix", materials=matrix_mats, initial_conditions=[matrix_pressure_ic]))
 
     center_x_val = domain_length / 2.0
-    srv_length_ft = kwargs.get('srv_length_ft', 280)
-    srv_height_ft = kwargs.get('srv_height_ft', 20)  # <- Changed here. From 50 to 20
     hf_length_ft = kwargs.get('hf_length_ft', 250)
     hf_height_ft = kwargs.get('hf_height_ft', 0.2)
 
-    geometries = [
-        SRVConfig(name="srv", length=srv_length_ft * conversion_factor, height=srv_height_ft * conversion_factor,
-                  center_x=center_x_val, center_y=frac_y_center, materials=srv_mats, initial_conditions=[srv_frac_pressure_ic]),
+    # SRV zones. By default a single SRV is built (backward compatible). Optionally
+    # pass `srv_specs`, a list of dicts with keys length_m, height_m, perm and
+    # optional name/porosity, to build multiple (e.g. nested) SRV zones. When zones
+    # overlap, the shorter (smaller-height) zone overrides the taller one at the
+    # center because geometries are applied in descending-height order.
+    srv_specs = kwargs.get('srv_specs', None)
+    if srv_specs is None:
+        srv_length_ft = kwargs.get('srv_length_ft', 280)
+        srv_height_ft = kwargs.get('srv_height_ft', 20)  # <- Changed here. From 50 to 20
+        srv_specs = [{
+            'name': 'srv',
+            'length_m': srv_length_ft * conversion_factor,
+            'height_m': srv_height_ft * conversion_factor,
+            'perm': srv_perm,
+            'porosity': 0.1,
+        }]
+
+    geometries = []
+    for spec in srv_specs:
+        spec_perm = spec.get('perm', srv_perm)
+        spec_perm_str = f"{spec_perm} 0 0 0 {spec_perm} 0 0 0 {spec_perm}"
+        spec_mats = ZoneMaterialProperties(porosity=spec.get('porosity', 0.1), permeability=spec_perm_str)
+        geometries.append(
+            SRVConfig(name=spec.get('name', 'srv'),
+                      length=spec['length_m'], height=spec['height_m'],
+                      center_x=center_x_val, center_y=frac_y_center,
+                      materials=spec_mats, initial_conditions=[srv_frac_pressure_ic])
+        )
+    geometries.append(
         HydraulicFractureConfig(name="hf", length=hf_length_ft * conversion_factor,
                                 height=hf_height_ft * conversion_factor, center_x=center_x_val,
                                 center_y=frac_y_center, materials=fracture_mats, initial_conditions=[srv_frac_pressure_ic])
-    ]
+    )
 
     sorted_geometries = sorted(geometries, key=lambda x: x.height, reverse=True)
     next_block_id = 1
