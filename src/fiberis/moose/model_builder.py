@@ -36,6 +36,9 @@ class ModelBuilder:
         self._last_mesh_op_name_within_mesh_block: Optional[str] = None
         self.geometry_info: Dict[str, Any] = {}
         self.postprocessor_info: Dict[str, Any] = {}
+        # eigenstrain names of any prescribed displacement-discontinuity (DDM) bands added;
+        # picked up by add_poromechanics_materials to wire the strain material's eigenstrain_names.
+        self._dd_eigenstrain_names: List[str] = []
 
     def add_initial_conditions_from_configs(self) -> 'ModelBuilder':
         """
@@ -255,6 +258,94 @@ class ModelBuilder:
         if 'srv_zones' not in self.geometry_info:
             self.geometry_info['srv_zones'] = []
         self.geometry_info['srv_zones'].append(config.__dict__)
+        return self
+
+    def add_prescribed_dd_band(self,
+                               name: str,
+                               center_x: float,
+                               center_y: float,
+                               length: float,
+                               band_thickness: float,
+                               opening: float = 0.0,
+                               slip: float = 0.0,
+                               ramp: Optional[Tuple[float, float]] = None) -> 'ModelBuilder':
+        """
+        Add a prescribed displacement-discontinuity (DDM-style dislocation) as an EIGENSTRAIN
+        thin band, reproducing a constant-DD rectangular element (verified vs DDMpy/Okada to <1%).
+
+        A length-`length`, thickness-`band_thickness` band carrying a uniform eigenstrain is
+        elastically equivalent to a dislocation loop around its edge:
+            opening (normal, m)      -> eps*_yy = opening / band_thickness
+            slip    (along-strike,m) -> eps*_xy = slip    / (2 * band_thickness)
+        The band is localised by a spatial box ParsedFunction used as the eigenstrain `prefactor`,
+        so NO separate mesh subdomain is needed (the eigenstrain rides on the existing blocks).
+        Strain amplitude is independent of G; it is set by (opening/slip, nu, geometry). Call this
+        BEFORE add_poromechanics_materials so the strain material picks up eigenstrain_names.
+
+        :param name: unique base name for the emitted function/materials.
+        :param center_x, center_y: band centre (model metres); the fault plane is y=center_y.
+        :param length: band length along x (strike), metres.
+        :param band_thickness: band thickness in y, metres. Must span >= ~2 of the finest cells;
+                               the eigenstrain is scaled by it so (eigenstrain*thickness)==DD.
+        :param opening: prescribed normal opening (tensile DD), metres. 0 to disable.
+        :param slip: prescribed along-strike slip (shear DD), metres. 0 to disable.
+        :param ramp: optional (t_start, t_end) for a linear 0->1 time ramp of the DD; None = static.
+        :return: self, for chaining.
+        """
+        if opening == 0.0 and slip == 0.0:
+            raise ValueError("add_prescribed_dd_band: set at least one of opening/slip (non-zero).")
+        hl, hh = length / 2.0, band_thickness / 2.0
+        box = f"(abs(x-{center_x})<={hl})*(abs(y-{center_y})<={hh})"
+        if ramp is not None:
+            t0, t1 = ramp
+            box += f"*max(0,min(1,(t-{t0})/({t1}-{t0})))"
+
+        functions_block = self._get_or_create_toplevel_moose_block("Functions")
+        func_name = f"{name}_prefactor_func"
+        fblk = MooseBlock(func_name, block_type="ParsedFunction")
+        fblk.add_param("expression", box)
+        functions_block.add_sub_block(fblk)
+
+        mat_block = self._get_or_create_toplevel_moose_block("Materials")
+        prop_name = f"{name}_prefactor"
+        gfm = MooseBlock(f"{name}_prefactor_mat", block_type="GenericFunctionMaterial")
+        gfm.add_param("prop_names", prop_name)
+        gfm.add_param("prop_values", func_name)
+        mat_block.add_sub_block(gfm)
+
+        for comp, mag in (("open", opening), ("slip", slip)):
+            if mag == 0.0:
+                continue
+            if comp == "open":
+                base = f"'0 {mag / band_thickness} 0 0 0 0'"          # eps*_yy = W/h
+            else:
+                base = f"'0 0 0 0 0 {mag / (2.0 * band_thickness)}'"  # eps*_xy = S/(2h)
+            eig_name = f"{name}_{comp}_eig"
+            eblk = MooseBlock(f"{name}_{comp}_eigenstrain", block_type="ComputeEigenstrain")
+            eblk.add_param("eigen_base", base)
+            eblk.add_param("prefactor", prop_name)
+            eblk.add_param("eigenstrain_name", eig_name)
+            mat_block.add_sub_block(eblk)
+            self._dd_eigenstrain_names.append(eig_name)
+
+        # Order-robust: if the strain material / executioner were already emitted (e.g.
+        # build_baseline_model called add_poromechanics_materials before this), patch them now.
+        for tb in self._top_level_blocks:
+            if tb.block_name == "Materials":
+                for sb in tb.sub_blocks:
+                    if sb.block_name == "strain" and sb.block_type == "ComputeSmallStrain":
+                        sb.params["eigenstrain_names"] = ' '.join(self._dd_eigenstrain_names)
+            elif tb.block_name == "Executioner" and "line_search" not in tb.params:
+                # a prescribed-DD eigenstrain trips MOOSE's default line search
+                # (DIVERGED_LINE_SEARCH); the full Newton step is what solves it. Do NOT enable
+                # automatic_scaling here -- it rescales the residual below the default nl_abs_tol
+                # and causes false convergence to the trivial (zero-displacement) solution.
+                tb.params["line_search"] = "none"
+
+        self.geometry_info.setdefault("dd_bands", []).append(
+            {"name": name, "center_x": center_x, "center_y": center_y, "length": length,
+             "band_thickness": band_thickness, "opening": opening, "slip": slip, "ramp": ramp})
+        print(f"Info: Added prescribed-DD band '{name}' (opening={opening}, slip={slip}, ramp={ramp}).")
         return self
 
     def refine_blocks(self, op_name: str, block_ids: List[int], refinement_levels: Union[int, List[int]]):
@@ -1248,6 +1339,9 @@ class ModelBuilder:
         strain_mat = MooseBlock("strain", "ComputeSmallStrain")
         strain_mat.add_param("displacements", ' '.join(displacements))
         strain_mat.add_param("block", ' '.join(all_block_names))
+        if self._dd_eigenstrain_names:
+            # include any prescribed displacement-discontinuity (DDM) bands in the elastic strain
+            strain_mat.add_param("eigenstrain_names", ' '.join(self._dd_eigenstrain_names))
         mat_block.add_sub_block(strain_mat)
 
         stress_mat = MooseBlock("stress", "ComputeLinearElasticStress")
@@ -2039,6 +2133,9 @@ class OptimizationLayeredModelBuilder(ModelBuilder):
         strain_mat = MooseBlock("strain", "ComputeSmallStrain")
         strain_mat.add_param("displacements", ' '.join(displacements))
         strain_mat.add_param("block", ' '.join(all_block_names))
+        if self._dd_eigenstrain_names:
+            # include any prescribed displacement-discontinuity (DDM) bands in the elastic strain
+            strain_mat.add_param("eigenstrain_names", ' '.join(self._dd_eigenstrain_names))
         mat_block.add_sub_block(strain_mat)
 
         stress_mat = MooseBlock("stress", "ComputeLinearElasticStress")
