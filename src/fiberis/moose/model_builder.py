@@ -127,7 +127,7 @@ class ModelBuilder:
         Add a generic mesh generator operation to the [Mesh] block.
 
         :param op_name: Desired name for the mesh operation.
-        :param op_type: Type of mesh generator (e.g., "GeneratedMeshGenerator", "StitchMeshGenerator").
+        :param op_type: Type of mesh generator (e.g., "GeneratedMeshGenerator", "StitchedMeshGenerator").
         :param params: Dictionary of parameters for the mesh generator.
         :param input_op: Input operation name, or "USE_LAST" to use the last mesh operation.
         :return: The unique name assigned to this mesh operation.
@@ -137,7 +137,7 @@ class ModelBuilder:
         unique_op_name = self._generate_unique_op_name(op_name, all_op_names)
         op_sub_block = MooseBlock(unique_op_name, block_type=op_type)
         final_input_op = self._last_mesh_op_name_within_mesh_block if input_op == "USE_LAST" else input_op
-        if final_input_op and 'input' not in params and not (op_type == 'StitchMeshGenerator' and 'inputs' in params):
+        if final_input_op and 'input' not in params and not (op_type == 'StitchedMeshGenerator' and 'inputs' in params):
             op_sub_block.add_param("input", final_input_op)
         for p_name, p_val in params.items():
             op_sub_block.add_param(p_name, p_val)
@@ -193,7 +193,7 @@ class ModelBuilder:
 
             layer_stitch_params = {'inputs': f"'{panel_a_name} {panel_b_name}'",
                                    'stitch_boundaries_pairs': "'bottom top'"}
-            stitched_layer_name = self._add_generic_mesh_generator(f"stitched_layer_{i}", "StitchMeshGenerator",
+            stitched_layer_name = self._add_generic_mesh_generator(f"stitched_layer_{i}", "StitchedMeshGenerator",
                                                                    layer_stitch_params, input_op="")
             stitched_layer_names.append(stitched_layer_name)
 
@@ -203,7 +203,7 @@ class ModelBuilder:
                 next_layer_name = stitched_layer_names[i]
                 final_stitch_params = {'inputs': f"'{current_mesh_name} {next_layer_name}'",
                                        'stitch_boundaries_pairs': "'bottom top'", 'clear_stitched_boundary_ids': True}
-                current_mesh_name = self._add_generic_mesh_generator(f"final_stitch_{i - 1}", "StitchMeshGenerator",
+                current_mesh_name = self._add_generic_mesh_generator(f"final_stitch_{i - 1}", "StitchedMeshGenerator",
                                                                      final_stitch_params, input_op="")
             self._last_mesh_op_name_within_mesh_block = current_mesh_name
         elif stitched_layer_names:
