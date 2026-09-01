@@ -139,7 +139,10 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
         geometries.append(
             SRVConfig(name=spec.get('name', 'srv'),
                       length=spec['length_m'], height=spec['height_m'],
-                      center_x=center_x_val, center_y=frac_y_center,
+                      center_x=center_x_val,
+                      # optional per-zone centre so SRV zones need not be symmetric about
+                      # the fracture; defaults to the fracture centre (backward compatible)
+                      center_y=spec.get('center_y', frac_y_center),
                       materials=spec_mats, initial_conditions=[srv_frac_pressure_ic])
         )
     geometries.append(
