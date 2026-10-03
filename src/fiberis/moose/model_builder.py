@@ -10,7 +10,8 @@ import matplotlib.pyplot as plt
 # Import config classes and lower-level MooseBlock class from the user's original file.
 from fiberis.moose.config import HydraulicFractureConfig, SRVConfig, AdaptivityConfig, \
     PointValueSamplerConfig, LineValueSamplerConfig, PostprocessorConfigBase, \
-    SimpleFluidPropertiesConfig, MatrixConfig, AdaptiveTimeStepperConfig, TimeSequenceStepper, PostprocessorConfig, CasingConfig
+    SimpleFluidPropertiesConfig, MatrixConfig, AdaptiveTimeStepperConfig, TimeSequenceStepper, PostprocessorConfig, CasingConfig, \
+    InjectionStageConfig
 from fiberis.moose.input_generator import MooseBlock
 from fiberis.analyzer.Data1D import core1D
 
@@ -982,6 +983,74 @@ class ModelBuilder:
         self.add_boundary_condition(name="confiney", bc_type="DirichletBC", variable=disp_y_variable,
                                     boundary_name=confine_disp_y_boundaries, params={"value": 0})
         print("Info: Set standard hydraulic fracturing BCs using predefined set.")
+        return self
+
+    def add_time_period_control(self, name: str, enable_objects: Union[str, List[str]],
+                                start_time: float, end_time: float,
+                                disable_objects: Optional[Union[str, List[str]]] = None,
+                                set_sync_times: bool = True,
+                                execute_on: str = "initial timestep_begin") -> 'ModelBuilder':
+        """
+        Add a TimePeriod control to the [Controls] block.
+
+        Objects in enable_objects are enabled for start_time <= t < end_time and disabled otherwise
+        (MOOSE's reverse_on_false default). Objects in disable_objects get the opposite treatment.
+
+        :param name: Name of the control.
+        :param enable_objects: Object path(s) to enable during the period, e.g. "BCs::stage_1_pressure".
+        :param start_time: Start of the period (s).
+        :param end_time: End of the period (s).
+        :param disable_objects: Optional object path(s) to disable during the period.
+        :param set_sync_times: If True, the time stepper is forced to land on start_time and end_time.
+        :param execute_on: When the control is evaluated. 'timestep_begin' makes the switch apply to the
+                           step that ends at the switch time.
+        :return: self, allowing method chaining.
+        """
+        controls_block = self._get_or_create_toplevel_moose_block("Controls")
+        control = MooseBlock(name, block_type="TimePeriod")
+        control.add_param("enable_objects", enable_objects)
+        if disable_objects:
+            control.add_param("disable_objects", disable_objects)
+        control.add_param("start_time", start_time)
+        control.add_param("end_time", end_time)
+        control.add_param("set_sync_times", set_sync_times)
+        control.add_param("execute_on", execute_on)
+        controls_block.add_sub_block(control)
+        print(f"Info: Added TimePeriod Control '{name}' ({start_time} to {end_time} s).")
+        return self
+
+    def add_staged_pressure_injection(self, stages: List[InjectionStageConfig], pressure_function_name: str,
+                                      pressure_variable: str = "pp") -> 'ModelBuilder':
+        """
+        Add a moving pressure injection: one FunctionDirichletBC per stage location, each switched on
+        only during its own time window by a TimePeriod control. Outside its window a stage point has
+        no BC (no-flow), i.e., it behaves as if isolated behind a plug.
+
+        For each stage this adds a nodeset '<name>', a BC '<name>_pressure', and a control '<name>_window'.
+        Call this AFTER set_hydraulic_fracturing_bcs, which clears the [BCs] block.
+
+        :param stages: List of InjectionStageConfig. Time windows must not overlap.
+        :param pressure_function_name: Default pressure function (e.g., the well's pressure record), used for
+                                       any stage without its own pressure_function_name.
+        :param pressure_variable: Name of the pressure variable (default: "pp").
+        :return: self, allowing method chaining.
+        """
+        ordered = sorted(stages, key=lambda s: s.start_time)
+        for prev, nxt in zip(ordered, ordered[1:]):
+            if nxt.start_time < prev.end_time:
+                raise ValueError(f"Stage windows overlap: '{prev.name}' ends at {prev.end_time} s but "
+                                 f"'{nxt.name}' starts at {nxt.start_time} s.")
+
+        for stage in ordered:
+            bc_name = f"{stage.name}_pressure"
+            self.add_nodeset_by_coord(nodeset_op_name=stage.name, new_boundary_name=stage.name,
+                                      coordinates=tuple(stage.coordinates))
+            self.add_boundary_condition(name=bc_name, bc_type="FunctionDirichletBC", variable=pressure_variable,
+                                        boundary_name=stage.name,
+                                        params={"function": stage.pressure_function_name or pressure_function_name})
+            self.add_time_period_control(name=f"{stage.name}_window", enable_objects=f"BCs::{bc_name}",
+                                         start_time=stage.start_time, end_time=stage.end_time)
+        print(f"Info: Added staged pressure injection with {len(ordered)} stages.")
         return self
 
     def add_user_object(self, name: str, uo_type: str, params: Optional[Dict[str, Any]] = None) -> 'ModelBuilder':
