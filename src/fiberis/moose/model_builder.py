@@ -271,7 +271,9 @@ class ModelBuilder:
                                ramp: Optional[Tuple[float, float]] = None) -> 'ModelBuilder':
         """
         Add a prescribed displacement-discontinuity (DDM-style dislocation) as an EIGENSTRAIN
-        thin band, reproducing a constant-DD rectangular element (verified vs DDMpy/Okada to <1%).
+        thin band in a two-dimensional model. Accuracy must be established for each
+        geometry; this method does not represent a finite-height 3D rectangle.
+        See numerical_ddm for the independently validated 3D workflow.
 
         A length-`length`, thickness-`band_thickness` band carrying a uniform eigenstrain is
         elastically equivalent to a dislocation loop around its edge:

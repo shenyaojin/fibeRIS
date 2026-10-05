@@ -67,3 +67,14 @@ The primary goal of this package is to bring the full power of MOOSE into a Pyth
 4.  Instantiate `MooseRunner` with the path to your compiled MOOSE application.
 5.  Call `runner.run()` with the generated `.i` file to execute the simulation.
 6.  Use `MoosePointSamplerSet` to load and analyze time-history data from the output directory.
+
+## Three-dimensional prescribed displacement discontinuities
+
+`fiberis.moose.numerical_ddm` supplies DDMPY-style Element, Well, Fracture and
+DynamicFracture interfaces for pure 3D elastic FE solves, conforming eigenstrain
+bands, rotated geometry, SI conversion, sampled well displacement and strain.
+NumericalConfig separates mesh/domain controls from prescribed opening and slip.
+The workspace research driver is `scripts/numerical_ddm/run_validation.py`; the
+self-contained original-notebook reproduction is `scripts/numerical_ddm/reproduce_notebook.py`.
+Consult their README and actual results for verified accuracy and limitations.
+The existing ModelBuilder.add_prescribed_dd_band remains a two-dimensional API.
