@@ -18,9 +18,15 @@ class ZoneMaterialProperties:
                  porosity: float,
                  permeability: Union[float, str], # Can be a scalar, tensor string, or filepath string
                  youngs_modulus: Optional[float] = None, # For solid mechanics
-                 poissons_ratio: Optional[float] = None): # For solid mechanics
+                 poissons_ratio: Optional[float] = None, # For solid mechanics
+                 biot_coefficient: Optional[float] = None): # For poromechanics
         """
         Initializes material properties for a specific zone.
+
+        Mechanical properties left as None fall back to a shared value: youngs_modulus / poissons_ratio
+        fall back to the matrix values (then 5e10 Pa / 0.2), and biot_coefficient falls back to the value
+        passed to ModelBuilder.add_poromechanics_materials and add_porous_flow_effective_stress_coupling_kernel.
+        The zone's solid bulk compliance (1/K_drained) is always computed as 3(1 - 2*poissons_ratio)/youngs_modulus.
 
         Args:
             porosity (float): The porosity of the material in this zone.
@@ -30,11 +36,13 @@ class ZoneMaterialProperties:
                 - A string representing a filepath to an .npz file for time-dependent permeability.
             youngs_modulus (Optional[float], optional): Young's modulus for elasticity. Defaults to None.
             poissons_ratio (Optional[float], optional): Poisson's ratio for elasticity. Defaults to None.
+            biot_coefficient (Optional[float], optional): Biot coefficient for this zone. Defaults to None.
         """
         self.porosity: float = porosity
         self.permeability: Union[float, str] = permeability
         self.youngs_modulus: Optional[float] = youngs_modulus
         self.poissons_ratio: Optional[float] = poissons_ratio
+        self.biot_coefficient: Optional[float] = biot_coefficient
 
 class InitialConditionConfig:
     """
