@@ -170,8 +170,7 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
     builder.add_fluid_properties_config(fluid_property)
     builder.add_poromechanics_materials(
         fluid_properties_name="water",
-        biot_coefficient=biot_coeff,
-        solid_bulk_compliance=2E-11
+        biot_coefficient=biot_coeff
     )
 
 

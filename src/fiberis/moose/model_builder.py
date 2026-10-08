@@ -432,6 +432,31 @@ class ModelBuilder:
         self.casing_config = config
         return self
 
+    def _material_zone_configs(self) -> list:
+        """
+        Return the zone configs that get their own material block: the casing layers for a casing model,
+        otherwise the matrix, SRV and fracture configs (in that order).
+        """
+        if self.casing_config:
+            return list(self.casing_config.layers)
+        return ([self.matrix_config] if self.matrix_config else []) + self.srv_configs + self.fracture_configs
+
+    def _zone_elastic_props(self, conf) -> Tuple[float, float]:
+        """
+        Return (youngs_modulus, poissons_ratio) for a zone config. Values the zone doesn't set fall back to
+        the matrix values (fracture/SRV models only), then to 5e10 Pa / 0.2.
+        """
+        fallbacks = [conf.materials] if conf else []
+        if not self.casing_config and self.matrix_config:
+            fallbacks.append(self.matrix_config.materials)
+        youngs_modulus = next((m.youngs_modulus for m in fallbacks if m.youngs_modulus is not None), 5.0E10)
+        poissons_ratio = next((m.poissons_ratio for m in fallbacks if m.poissons_ratio is not None), 0.2)
+        return youngs_modulus, poissons_ratio
+
+    def _has_per_zone_biot(self) -> bool:
+        """True if any zone sets its own biot_coefficient (the effective stress kernels must then be split per zone)."""
+        return any(c.materials.biot_coefficient is not None for c in self._material_zone_configs())
+
     #### New MESH GENERATION METHODS FOR PERM IMAGING below ###
     def build_mesh_for_casing_model(self,
                                     domain_length: float,
@@ -757,15 +782,29 @@ class ModelBuilder:
         :param kernel_name: the name of the kernel.
         :param variable: the variable to which the effective stress coupling is applied.
         :param component: The component (0 for x, 1 for y and 2 for z) of grad(P)
-        :param biot_coefficient: Biot coefficient for the effective stress coupling.
+        :param biot_coefficient: Biot coefficient for the effective stress coupling. If any zone config sets its own
+                                 biot_coefficient, one kernel per zone ('<kernel_name>_<zone>') is added instead, and
+                                 this value is used for zones that don't set one. Zone configs must be added first.
         :return: self, allowing method chaining.
         """
         kernels_main_block = self._get_or_create_toplevel_moose_block("Kernels")
-        kernel_obj = MooseBlock(kernel_name, block_type="PorousFlowEffectiveStressCoupling")
-        kernel_obj.add_param("variable", variable)
-        kernel_obj.add_param("component", component)
-        kernel_obj.add_param("biot_coefficient", biot_coefficient)
-        kernels_main_block.add_sub_block(kernel_obj)
+        if not self._has_per_zone_biot():
+            kernel_obj = MooseBlock(kernel_name, block_type="PorousFlowEffectiveStressCoupling")
+            kernel_obj.add_param("variable", variable)
+            kernel_obj.add_param("component", component)
+            kernel_obj.add_param("biot_coefficient", biot_coefficient)
+            kernels_main_block.add_sub_block(kernel_obj)
+            return self
+
+        # MOOSE takes a single constant biot_coefficient per kernel, so per-zone values need one kernel per block
+        for conf in self._material_zone_configs():
+            zone_biot = conf.materials.biot_coefficient
+            kernel_obj = MooseBlock(f"{kernel_name}_{conf.name}", block_type="PorousFlowEffectiveStressCoupling")
+            kernel_obj.add_param("variable", variable)
+            kernel_obj.add_param("component", component)
+            kernel_obj.add_param("biot_coefficient", zone_biot if zone_biot is not None else biot_coefficient)
+            kernel_obj.add_param("block", conf.name)
+            kernels_main_block.add_sub_block(kernel_obj)
         return self
 
     def add_porous_flow_mass_volumetric_expansion_kernel(self, kernel_name: str, variable: str,
@@ -1277,7 +1316,7 @@ class ModelBuilder:
     def add_poromechanics_materials(self,
                                     fluid_properties_name: str,
                                     biot_coefficient: float,
-                                    solid_bulk_compliance: float,
+                                    solid_bulk_compliance: Optional[float] = None,
                                     displacements: List[str] = ['disp_x', 'disp_y'],
                                     porepressure_variable: str = 'pp') -> 'ModelBuilder':
         """
@@ -1286,6 +1325,13 @@ class ModelBuilder:
         1. For Casing/Layered models, it defines materials on a per-layer basis.
         2. For legacy Fracture/SRV models, it uses a global elasticity tensor derived
            from the matrix properties to ensure backward compatibility.
+
+        Each zone's solid bulk compliance (1/K_drained) is computed from its Young's modulus and Poisson's
+        ratio as 3(1 - 2*nu)/E, so the fluid storage term always matches the mechanics.
+
+        :param biot_coefficient: Biot coefficient for zones that don't set their own.
+        :param solid_bulk_compliance: Optional, kept for older scripts. If given, it must equal the computed
+                                      compliance of every zone, otherwise a ValueError is raised.
         """
         fluid_config = next((c for c in self.fluid_properties_configs if c.name == fluid_properties_name), None)
         if not fluid_config:
@@ -1366,27 +1412,75 @@ class ModelBuilder:
                     perm_mat.add_param("block", conf.name)
                     mat_block.add_sub_block(perm_mat)
 
-            # Global elasticity tensor based on matrix properties (original behavior)
-            elasticity_mat = MooseBlock("elasticity_tensor_matrix", "ComputeIsotropicElasticityTensor")
-            youngs_modulus = self.matrix_config.materials.youngs_modulus if self.matrix_config and self.matrix_config.materials.youngs_modulus is not None else 5.0E10
-            poissons_ratio = self.matrix_config.materials.poissons_ratio if self.matrix_config and self.matrix_config.materials.poissons_ratio is not None else 0.2
-            elasticity_mat.add_param("youngs_modulus", youngs_modulus)
-            elasticity_mat.add_param("poissons_ratio", poissons_ratio)
-            mat_block.add_sub_block(elasticity_mat)
+            youngs_modulus, poissons_ratio = self._zone_elastic_props(self.matrix_config)
+            zone_configs = self.srv_configs + self.fracture_configs
+            if not any(c.materials.youngs_modulus is not None or c.materials.poissons_ratio is not None
+                       for c in zone_configs):
+                # Global elasticity tensor based on matrix properties (original behavior)
+                elasticity_mat = MooseBlock("elasticity_tensor_matrix", "ComputeIsotropicElasticityTensor")
+                elasticity_mat.add_param("youngs_modulus", youngs_modulus)
+                elasticity_mat.add_param("poissons_ratio", poissons_ratio)
+                mat_block.add_sub_block(elasticity_mat)
+            else:
+                # Per-zone elasticity tensors; zones without their own values use the matrix values
+                for conf in all_configs:
+                    zone_e, zone_nu = self._zone_elastic_props(conf)
+                    elasticity_mat = MooseBlock(f"elasticity_tensor_{conf.name}", "ComputeIsotropicElasticityTensor")
+                    elasticity_mat.add_param("youngs_modulus", zone_e)
+                    elasticity_mat.add_param("poissons_ratio", zone_nu)
+                    elasticity_mat.add_param("block", conf.name)
+                    mat_block.add_sub_block(elasticity_mat)
 
         # --- COMMON MATERIALS FOR BOTH MODEL TYPES ---
         mat_block.add_sub_block(MooseBlock("temperature", "PorousFlowTemperature"))
 
-        biot_mod_params = {
-            "biot_coefficient": biot_coefficient,
-            "solid_bulk_compliance": solid_bulk_compliance,
-            "fluid_bulk_modulus": fluid_config.bulk_modulus,
-            "block": ' '.join(all_block_names)
-        }
-        biot_mod_mat = MooseBlock("biot_modulus", "PorousFlowConstantBiotModulus")
-        for p_name, p_val in biot_mod_params.items():
-            biot_mod_mat.add_param(p_name, p_val)
-        mat_block.add_sub_block(biot_mod_mat)
+        # Per-zone (biot, compliance); the compliance always comes from the zone's E and nu
+        zone_biot_params = {}
+        for conf in all_configs:
+            zone_e, zone_nu = self._zone_elastic_props(conf)
+            zone_compliance = float(f"{3.0 * (1.0 - 2.0 * zone_nu) / zone_e:.12g}")  # trim float noise for the input file
+            if solid_bulk_compliance is not None and not np.isclose(solid_bulk_compliance, zone_compliance,
+                                                                    rtol=1e-6, atol=0.0):
+                raise ValueError(
+                    f"Zone '{conf.name}': solid_bulk_compliance={solid_bulk_compliance} does not match the "
+                    f"compliance from its mechanics, 3(1-2*nu)/E = {zone_compliance:.6g} 1/Pa "
+                    f"(E={zone_e}, nu={zone_nu}). Remove the solid_bulk_compliance argument to use the "
+                    f"computed value, or change E/nu.")
+            zone_biot = conf.materials.biot_coefficient
+            zone_biot_params[conf.name] = (zone_biot if zone_biot is not None else biot_coefficient, zone_compliance)
+
+        if len(set(zone_biot_params.values())) == 1:
+            # every zone has the same values: one material over all blocks
+            zone_biot, zone_compliance = next(iter(zone_biot_params.values()))
+            biot_mod_params = {
+                "biot_coefficient": zone_biot,
+                "solid_bulk_compliance": zone_compliance,
+                "fluid_bulk_modulus": fluid_config.bulk_modulus,
+                "block": ' '.join(all_block_names)
+            }
+            biot_mod_mat = MooseBlock("biot_modulus", "PorousFlowConstantBiotModulus")
+            for p_name, p_val in biot_mod_params.items():
+                biot_mod_mat.add_param(p_name, p_val)
+            mat_block.add_sub_block(biot_mod_mat)
+        else:
+            for zone_name, (zone_biot, zone_compliance) in zone_biot_params.items():
+                biot_mod_mat = MooseBlock(f"biot_modulus_{zone_name}", "PorousFlowConstantBiotModulus")
+                biot_mod_mat.add_param("biot_coefficient", zone_biot)
+                biot_mod_mat.add_param("solid_bulk_compliance", zone_compliance)
+                biot_mod_mat.add_param("fluid_bulk_modulus", fluid_config.bulk_modulus)
+                biot_mod_mat.add_param("block", zone_name)
+                mat_block.add_sub_block(biot_mod_mat)
+
+        if self._has_per_zone_biot():
+            # a single effective stress kernel added before the zone configs would apply one Biot value everywhere
+            for tb in self._top_level_blocks:
+                if tb.block_name == "Kernels":
+                    for sb in tb.sub_blocks:
+                        if sb.block_type == "PorousFlowEffectiveStressCoupling" and "block" not in sb.params:
+                            raise ValueError(
+                                f"Kernel '{sb.block_name}' uses one Biot coefficient for all zones, but some zones set "
+                                f"their own biot_coefficient. Add the zone configs before calling "
+                                f"add_porous_flow_effective_stress_coupling_kernel.")
 
         mat_block.add_sub_block(MooseBlock("massfrac", "PorousFlowMassFraction"))
 
@@ -1981,8 +2075,7 @@ class ModelBuilder:
         builder.add_porous_flow_mass_volumetric_expansion_kernel(kernel_name="mass_exp", variable="pp")
 
         # 7. Define Materials block based on previously set configs
-        builder.add_poromechanics_materials(fluid_properties_name="water", biot_coefficient=0.7,
-                                            solid_bulk_compliance=1e-11)
+        builder.add_poromechanics_materials(fluid_properties_name="water", biot_coefficient=0.7)
 
         # 8. Define Functions (e.g., for time-dependent BCs)
         # Create a synthetic Data1D object for the injection pressure schedule.
