@@ -421,6 +421,37 @@ class SimpleFluidPropertiesConfig:
         self.cv: Optional[float] = cv
         self.porepressure_coefficient: Optional[float] = porepressure_coefficient
 
+# +++ Staged (moving) pressure injection +++
+class InjectionStageConfig:
+    """
+    One injection stage (e.g., one perf stage) for ModelBuilder.add_staged_pressure_injection.
+    The pressure BC at `coordinates` is active only for start_time <= t < end_time.
+    """
+    def __init__(self,
+                 name: str,
+                 coordinates: Tuple[float, float, float],
+                 start_time: float,
+                 end_time: float,
+                 pressure_function_name: Optional[str] = None):
+        """
+        Initializes an InjectionStageConfig.
+
+        Args:
+            name (str): Stage name (e.g., "stage_22"). Used to name the nodeset, BC, and control. No spaces.
+            coordinates (Tuple[float, float, float]): Injection point. Must coincide with a mesh node.
+            start_time (float): Simulation time (s) when this stage's pressure BC switches on.
+            end_time (float): Simulation time (s) when this stage's pressure BC switches off.
+            pressure_function_name (Optional[str], optional): Function for this stage's pressure.
+                If None, the shared function passed to add_staged_pressure_injection is used.
+        """
+        if end_time <= start_time:
+            raise ValueError(f"Stage '{name}': end_time ({end_time}) must be greater than start_time ({start_time}).")
+        self.name: str = name
+        self.coordinates: Tuple[float, float, float] = coordinates
+        self.start_time: float = start_time
+        self.end_time: float = end_time
+        self.pressure_function_name: Optional[str] = pressure_function_name
+
 # Adaptive time-stepping configuration
 class TimeStepperFunctionConfig(Data1D):
     """
