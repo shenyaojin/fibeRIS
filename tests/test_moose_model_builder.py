@@ -439,7 +439,7 @@ def test_add_poromechanics_materials_fracture_workflow():
                                center_y=5, materials=srv_mats))
     b.add_fluid_properties_config(SimpleFluidPropertiesConfig(name="water"))
     b.add_poromechanics_materials(fluid_properties_name="water",
-                                  biot_coefficient=0.7, solid_bulk_compliance=1e-11)
+                                  biot_coefficient=0.7)
     rendered = _render_block(b, "Materials")
     assert "[porosity_matrix]" in rendered
     assert "type = PorousFlowPorosityConst" in rendered
@@ -476,7 +476,7 @@ def test_add_poromechanics_materials_npz_permeability_path(tmp_path):
     b.set_matrix_config(MatrixConfig(name="matrix", materials=mats))
     b.add_fluid_properties_config(SimpleFluidPropertiesConfig(name="water"))
     b.add_poromechanics_materials(fluid_properties_name="water",
-                                  biot_coefficient=0.7, solid_bulk_compliance=1e-11)
+                                  biot_coefficient=0.7)
     materials = _render_block(b, "Materials")
     aux_vars = _render_block(b, "AuxVariables")
     aux_kernels = _render_block(b, "AuxKernels")
@@ -773,7 +773,7 @@ def test_add_poromechanics_materials_casing_workflow():
     b.build_mesh_for_casing_model(domain_length=100.0, nx=10, ny=10)
     b.add_fluid_properties_config(SimpleFluidPropertiesConfig(name="water"))
     b.add_poromechanics_materials(fluid_properties_name="water",
-                                  biot_coefficient=0.7, solid_bulk_compliance=1e-11)
+                                  biot_coefficient=0.7)
     rendered = _render_block(b, "Materials")
     # Per-layer materials.
     assert "[porosity_top]" in rendered
@@ -949,3 +949,81 @@ def test_optimization_reporters_and_dirac():
     assert "real_vector_names = 'perm_1 perm_2'" in reporters
     assert "[misfit]" in dirac
     assert "variable = 'disp_y_adjoint'" in dirac
+
+
+# --- Per-zone mechanical properties ----------------------------------------
+
+def _per_zone_builder(matrix_kw=None, srv_kw=None, frac_kw=None):
+    b = ModelBuilder("PZ")
+    b.set_matrix_config(MatrixConfig(name="matrix", materials=ZoneMaterialProperties(
+        porosity=0.01, permeability=1e-18, **(matrix_kw or {}))))
+    b.add_srv_config(SRVConfig(name="srv", length=10, height=4, center_x=5, center_y=5,
+                               materials=ZoneMaterialProperties(porosity=0.1, permeability=1e-15, **(srv_kw or {}))))
+    b.add_fracture_config(HydraulicFractureConfig(name="frac", length=8, height=0.5, center_x=5, center_y=5,
+                          materials=ZoneMaterialProperties(porosity=0.05, permeability=1e-13, **(frac_kw or {}))))
+    b.add_fluid_properties_config(SimpleFluidPropertiesConfig(name="water"))
+    return b
+
+
+def _material(builder, name):
+    mats = builder._get_or_create_toplevel_moose_block("Materials")
+    return next(sb for sb in mats.sub_blocks if sb.block_name == name)
+
+
+def test_compliance_computed_from_default_mechanics():
+    # No E/nu anywhere -> defaults 5e10 / 0.2 -> compliance 3(1-0.4)/5e10 = 3.6e-11, one material for all zones.
+    b = _per_zone_builder()
+    b.add_poromechanics_materials(fluid_properties_name="water", biot_coefficient=0.7)
+    biot_mod = _material(b, "biot_modulus")
+    assert biot_mod.params["solid_bulk_compliance"] == pytest.approx(3.6e-11)
+    assert biot_mod.params["block"] == "matrix srv frac"
+    assert _material(b, "elasticity_tensor_matrix").params["youngs_modulus"] == 5.0E10
+
+
+def test_per_zone_elasticity_and_compliance_with_fallbacks():
+    b = _per_zone_builder(matrix_kw=dict(youngs_modulus=3e10, poissons_ratio=0.25),
+                          srv_kw=dict(youngs_modulus=1.5e10))   # srv nu falls back to the matrix's 0.25
+    b.add_poromechanics_materials(fluid_properties_name="water", biot_coefficient=0.7)
+    assert _material(b, "elasticity_tensor_srv").params == {
+        "youngs_modulus": 1.5e10, "poissons_ratio": 0.25, "block": "srv"}
+    assert _material(b, "elasticity_tensor_frac").params == {
+        "youngs_modulus": 3e10, "poissons_ratio": 0.25, "block": "frac"}
+    assert _material(b, "biot_modulus_matrix").params["solid_bulk_compliance"] == pytest.approx(5e-11)
+    assert _material(b, "biot_modulus_srv").params["solid_bulk_compliance"] == pytest.approx(1e-10)
+    assert _material(b, "biot_modulus_frac").params["solid_bulk_compliance"] == pytest.approx(5e-11)
+
+
+def test_passed_compliance_must_match_mechanics():
+    # matching value is accepted
+    b = _per_zone_builder(matrix_kw=dict(youngs_modulus=3e10, poissons_ratio=0.25))
+    b.add_poromechanics_materials(fluid_properties_name="water", biot_coefficient=0.7, solid_bulk_compliance=5e-11)
+    assert _material(b, "biot_modulus").params["solid_bulk_compliance"] == pytest.approx(5e-11)
+    # a zone whose mechanics give a different compliance raises
+    b = _per_zone_builder(matrix_kw=dict(youngs_modulus=3e10, poissons_ratio=0.25),
+                          frac_kw=dict(youngs_modulus=5e9))
+    with pytest.raises(ValueError, match="Zone 'frac'"):
+        b.add_poromechanics_materials(fluid_properties_name="water", biot_coefficient=0.7,
+                                      solid_bulk_compliance=5e-11)
+
+
+def test_per_zone_biot_splits_kernels_and_materials():
+    b = _per_zone_builder(srv_kw=dict(biot_coefficient=0.8), frac_kw=dict(biot_coefficient=0.95))
+    b.add_porous_flow_effective_stress_coupling_kernel("eff_stress_x", "disp_x", 0, biot_coefficient=0.7)
+    b.add_poromechanics_materials(fluid_properties_name="water", biot_coefficient=0.7)
+    kernels = {sb.block_name: sb.params for sb in b._get_or_create_toplevel_moose_block("Kernels").sub_blocks}
+    assert set(kernels) == {"eff_stress_x_matrix", "eff_stress_x_srv", "eff_stress_x_frac"}
+    assert kernels["eff_stress_x_matrix"]["biot_coefficient"] == 0.7
+    assert kernels["eff_stress_x_frac"]["biot_coefficient"] == 0.95
+    assert kernels["eff_stress_x_frac"]["block"] == "frac"
+    assert _material(b, "biot_modulus_srv").params["biot_coefficient"] == 0.8
+    assert _material(b, "biot_modulus_matrix").params["biot_coefficient"] == 0.7
+
+
+def test_per_zone_biot_with_unsplit_kernel_raises():
+    b = ModelBuilder("PZ")
+    b.add_porous_flow_effective_stress_coupling_kernel("eff_stress_x", "disp_x", 0, biot_coefficient=0.7)
+    b.set_matrix_config(MatrixConfig(name="matrix", materials=ZoneMaterialProperties(
+        porosity=0.01, permeability=1e-18, biot_coefficient=0.6)))
+    b.add_fluid_properties_config(SimpleFluidPropertiesConfig(name="water"))
+    with pytest.raises(ValueError, match="eff_stress_x"):
+        b.add_poromechanics_materials(fluid_properties_name="water", biot_coefficient=0.7)

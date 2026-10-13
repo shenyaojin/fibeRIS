@@ -18,9 +18,15 @@ class ZoneMaterialProperties:
                  porosity: float,
                  permeability: Union[float, str], # Can be a scalar, tensor string, or filepath string
                  youngs_modulus: Optional[float] = None, # For solid mechanics
-                 poissons_ratio: Optional[float] = None): # For solid mechanics
+                 poissons_ratio: Optional[float] = None, # For solid mechanics
+                 biot_coefficient: Optional[float] = None): # For poromechanics
         """
         Initializes material properties for a specific zone.
+
+        Mechanical properties left as None fall back to a shared value: youngs_modulus / poissons_ratio
+        fall back to the matrix values (then 5e10 Pa / 0.2), and biot_coefficient falls back to the value
+        passed to ModelBuilder.add_poromechanics_materials and add_porous_flow_effective_stress_coupling_kernel.
+        The zone's solid bulk compliance (1/K_drained) is always computed as 3(1 - 2*poissons_ratio)/youngs_modulus.
 
         Args:
             porosity (float): The porosity of the material in this zone.
@@ -30,11 +36,13 @@ class ZoneMaterialProperties:
                 - A string representing a filepath to an .npz file for time-dependent permeability.
             youngs_modulus (Optional[float], optional): Young's modulus for elasticity. Defaults to None.
             poissons_ratio (Optional[float], optional): Poisson's ratio for elasticity. Defaults to None.
+            biot_coefficient (Optional[float], optional): Biot coefficient for this zone. Defaults to None.
         """
         self.porosity: float = porosity
         self.permeability: Union[float, str] = permeability
         self.youngs_modulus: Optional[float] = youngs_modulus
         self.poissons_ratio: Optional[float] = poissons_ratio
+        self.biot_coefficient: Optional[float] = biot_coefficient
 
 class InitialConditionConfig:
     """
@@ -420,6 +428,37 @@ class SimpleFluidPropertiesConfig:
         self.cp: Optional[float] = cp
         self.cv: Optional[float] = cv
         self.porepressure_coefficient: Optional[float] = porepressure_coefficient
+
+# +++ Staged (moving) pressure injection +++
+class InjectionStageConfig:
+    """
+    One injection stage (e.g., one perf stage) for ModelBuilder.add_staged_pressure_injection.
+    The pressure BC at `coordinates` is active only for start_time <= t < end_time.
+    """
+    def __init__(self,
+                 name: str,
+                 coordinates: Tuple[float, float, float],
+                 start_time: float,
+                 end_time: float,
+                 pressure_function_name: Optional[str] = None):
+        """
+        Initializes an InjectionStageConfig.
+
+        Args:
+            name (str): Stage name (e.g., "stage_22"). Used to name the nodeset, BC, and control. No spaces.
+            coordinates (Tuple[float, float, float]): Injection point. Must coincide with a mesh node.
+            start_time (float): Simulation time (s) when this stage's pressure BC switches on.
+            end_time (float): Simulation time (s) when this stage's pressure BC switches off.
+            pressure_function_name (Optional[str], optional): Function for this stage's pressure.
+                If None, the shared function passed to add_staged_pressure_injection is used.
+        """
+        if end_time <= start_time:
+            raise ValueError(f"Stage '{name}': end_time ({end_time}) must be greater than start_time ({start_time}).")
+        self.name: str = name
+        self.coordinates: Tuple[float, float, float] = coordinates
+        self.start_time: float = start_time
+        self.end_time: float = end_time
+        self.pressure_function_name: Optional[str] = pressure_function_name
 
 # Adaptive time-stepping configuration
 class TimeStepperFunctionConfig(Data1D):

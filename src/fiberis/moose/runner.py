@@ -2,6 +2,7 @@
 import subprocess
 import os
 import shlex
+import re
 import shutil
 from typing import Optional, Tuple, Dict, List
 
@@ -10,6 +11,10 @@ class MooseRunner:
     """
     A class to manage and run MOOSE simulations.
     """
+
+    # Written to the run directory by detached runs (see run(detach=True) and check_status).
+    PID_FILE_NAME = "moose_run.pid"
+    EXIT_CODE_FILE_NAME = "moose_run.exitcode"
 
     def __init__(self, moose_executable_path: str, mpiexec_path: Optional[str] = None):
         """
@@ -38,6 +43,8 @@ class MooseRunner:
         self.last_run_stdout: Optional[str] = None
         self.last_run_stderr: Optional[str] = None
         self.last_run_returncode: Optional[int] = None
+        self.last_run_directory: Optional[str] = None
+        self.last_log_file_name: Optional[str] = None
 
     def run(self,
             input_file_path: str,
@@ -48,7 +55,8 @@ class MooseRunner:
             log_file_name: Optional[str] = "log.txt",
             stream_output: bool = True,
             clean_output_dir: bool = True,
-            cli_args: Optional[List[str]] = None) -> Tuple[bool, str, str]:
+            cli_args: Optional[List[str]] = None,
+            detach: bool = False) -> Tuple[bool, str, str]:
         """
         Runs a MOOSE simulation and optionally logs STDOUT.
 
@@ -71,12 +79,17 @@ class MooseRunner:
                                      before the simulation to ensure a clean run. If False,
                                      existing files will be preserved.
             cli_args (Optional[List[str]]): Alias for additional_args.
+            detach (bool): If True, start MOOSE as an independent background process and return
+                           immediately. The run keeps going if the notebook kernel stops or VS Code
+                           is closed. Output is written to the log file as the run progresses
+                           (stream_output is ignored). Use check_status() to see if it is finished.
 
         Returns:
             Tuple[bool, str, str]: A tuple containing:
                                    - bool: True if the simulation completed successfully (return code 0), False otherwise.
                                    - str: The standard output from the MOOSE process.
                                    - str: The standard error from the MOOSE process.
+                                   With detach=True: True if the run was started, a short message, and "".
         """
         # Support both naming conventions
         if cli_args and not additional_args:
@@ -155,6 +168,12 @@ class MooseRunner:
         })
         if moose_env_vars:
             current_env.update(moose_env_vars)
+
+        self.last_run_directory = cwd
+        self.last_log_file_name = log_file_name
+
+        if detach:
+            return self._run_detached(command, cwd, current_env, log_file_name or "log.txt")
 
         try:
             if stream_output:
@@ -245,6 +264,143 @@ class MooseRunner:
             self.last_run_stderr = error_message
             self.last_run_returncode = -1
             return False, "", error_message
+
+    def _run_detached(self, command: List[str], cwd: str, env: Dict[str, str],
+                      log_file_name: str) -> Tuple[bool, str, str]:
+        """
+        Start MOOSE in its own session so it outlives the calling Python process.
+
+        A small shell wrapper writes all output to the log file and, when MOOSE exits,
+        writes its exit code to EXIT_CODE_FILE_NAME. The wrapper's PID goes to PID_FILE_NAME.
+        """
+        self.last_log_file_name = log_file_name
+        log_path = os.path.join(cwd, log_file_name)
+        exit_code_path = os.path.join(cwd, self.EXIT_CODE_FILE_NAME)
+        pid_path = os.path.join(cwd, self.PID_FILE_NAME)
+        # Stale status files from a previous run (when clean_output_dir=False) would give a wrong status.
+        for path in (exit_code_path, pid_path):
+            if os.path.exists(path):
+                os.remove(path)
+
+        moose_cmd = ' '.join(shlex.quote(str(c)) for c in command)
+        wrapper = (f"{moose_cmd} > {shlex.quote(log_path)} 2>&1; "
+                   f"echo $? > {shlex.quote(exit_code_path)}")
+        try:
+            process = subprocess.Popen(
+                ["/bin/sh", "-c", wrapper],
+                cwd=cwd,
+                env=env,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,  # own session/process group: not killed with the kernel or terminal
+            )
+        except OSError as e:
+            error_message = f"Failed to start detached MOOSE run: {e}"
+            print(error_message)
+            return False, "", error_message
+
+        with open(pid_path, 'w') as f:
+            f.write(str(process.pid))
+        log_arg = "" if log_file_name == "log.txt" else f", log_file_name='{log_file_name}'"
+        message = (f"MOOSE started in the background (PID {process.pid}). It will keep running if you close "
+                   f"VS Code.\nLog: {log_path}\nCheck progress with runner.check_status('{cwd}'{log_arg}).")
+        print(message)
+        return True, message, ""
+
+    def check_status(self, output_directory: Optional[str] = None, log_file_name: Optional[str] = None,
+                     verbose: bool = True) -> str:
+        """
+        Report the status of a MOOSE run started with run(detach=True).
+
+        Works from a new Python session too: pass the run's output directory.
+
+        Args:
+            output_directory (Optional[str]): The run directory. Defaults to the last run from this runner.
+            log_file_name (Optional[str]): Log file name. Defaults to the last run's, or "log.txt".
+            verbose (bool): If True (default), print a one-line summary (plus the log tail on failure).
+
+        Returns:
+            str: One of "running", "finished", "failed", "stopped" (process gone without an exit code,
+                 e.g. killed or the server rebooted), or "not started".
+        """
+        cwd = os.path.abspath(output_directory) if output_directory else self.last_run_directory
+        if cwd is None:
+            raise ValueError("No output_directory given and this runner has not started a run.")
+        log_file_name = log_file_name or (self.last_log_file_name if cwd == self.last_run_directory else None) \
+            or "log.txt"
+        log_path = os.path.join(cwd, log_file_name)
+        exit_code_path = os.path.join(cwd, self.EXIT_CODE_FILE_NAME)
+        pid_path = os.path.join(cwd, self.PID_FILE_NAME)
+
+        log_text = ""
+        if os.path.exists(log_path):
+            with open(log_path, 'r', errors='replace') as f:
+                log_text = f.read()
+        progress = self._progress_from_log(log_text, cwd)
+
+        if os.path.exists(exit_code_path):
+            with open(exit_code_path, 'r') as f:
+                exit_code = f.read().strip()
+            status = "finished" if exit_code == "0" else "failed"
+            summary = f"Finished successfully. {progress}" if status == "finished" else \
+                f"FAILED (exit code {exit_code}). {progress}"
+        elif os.path.exists(pid_path):
+            with open(pid_path, 'r') as f:
+                pid = int(f.read().strip())
+            if self._pid_alive(pid):
+                status, summary = "running", f"Running. {progress}"
+            else:
+                status = "stopped"
+                summary = f"STOPPED: the process (PID {pid}) is gone but never reported an exit code. {progress}"
+        else:
+            status, summary = "not started", f"No detached run found in {cwd}."
+
+        if verbose:
+            print(summary)
+            if status in ("failed", "stopped") and log_text:
+                print("--- last lines of the log ---")
+                print("\n".join(log_text.splitlines()[-30:]))
+        return status
+
+    @staticmethod
+    def _pid_alive(pid: int) -> bool:
+        """True if a process with this PID is running on this machine (zombies count as not running)."""
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return True
+        # A killed run launched from a still-open kernel stays a zombie until the kernel reaps it.
+        try:
+            with open(f"/proc/{pid}/stat", 'r') as f:
+                state = f.read().rsplit(')', 1)[1].split()[0]
+            return state != 'Z'
+        except (OSError, IndexError):
+            return True
+
+    @staticmethod
+    def _progress_from_log(log_text: str, cwd: str) -> str:
+        """Describe progress using the last 'Time Step N, time = T' line and the [Executioner] end_time."""
+        steps = re.findall(r"Time Step\s+(\d+), time = ([0-9.eE+-]+)", log_text)
+        if not steps:
+            return "No time steps completed yet."
+        step, t = int(steps[-1][0]), float(steps[-1][1])
+        end_time = None
+        for name in sorted(os.listdir(cwd)):
+            if name.endswith(".i"):
+                with open(os.path.join(cwd, name), 'r') as f:
+                    # Only look inside [Executioner] (other blocks, e.g. [Controls], also have end_time).
+                    match = re.search(r"^\[Executioner\](.*?)^\[\]", f.read(), re.MULTILINE | re.DOTALL)
+                if match:
+                    end_match = re.search(r"^\s*end_time\s*=\s*'?([0-9.eE+-]+)", match.group(1), re.MULTILINE)
+                    if end_match:
+                        end_time = float(end_match.group(1))
+                        break
+        if end_time:
+            return f"Time step {step}, t = {t:g} s of {end_time:g} s ({100 * t / end_time:.0f}%)."
+        return f"Time step {step}, t = {t:g} s."
 
 
 if __name__ == "__main__":

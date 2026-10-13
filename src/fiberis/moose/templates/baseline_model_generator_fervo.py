@@ -189,8 +189,7 @@ def build_baseline_model(**kwargs) -> ModelBuilder:
     builder.add_fluid_properties_config(fluid_property)
     builder.add_poromechanics_materials(
         fluid_properties_name="water",
-        biot_coefficient=biot_coeff,
-        solid_bulk_compliance=2E-11
+        biot_coefficient=biot_coeff
     )
 
     builder.add_piecewise_function_from_data1d(name="injection_pressure_func", source_data1d=gauge_data_for_moose)
