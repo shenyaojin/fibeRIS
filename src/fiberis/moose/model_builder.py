@@ -1067,6 +1067,7 @@ class ModelBuilder:
         only during its own time window by a TimePeriod control. Outside its window a stage point has
         no BC (no-flow), i.e., it behaves as if isolated behind a plug.
 
+        A stage with a bounding_box is applied to every node in the box (a line/patch) instead of a single node.
         For each stage this adds a nodeset '<name>', a BC '<name>_pressure', and a control '<name>_window'.
         Call this AFTER set_hydraulic_fracturing_bcs, which clears the [BCs] block.
 
@@ -1084,8 +1085,12 @@ class ModelBuilder:
 
         for stage in ordered:
             bc_name = f"{stage.name}_pressure"
-            self.add_nodeset_by_coord(nodeset_op_name=stage.name, new_boundary_name=stage.name,
-                                      coordinates=tuple(stage.coordinates))
+            if stage.bounding_box is not None:
+                self.add_nodeset_by_bbox(nodeset_op_name=stage.name, new_boundary_name=stage.name,
+                                         bottom_left=tuple(stage.bounding_box[0]), top_right=tuple(stage.bounding_box[1]))
+            else:
+                self.add_nodeset_by_coord(nodeset_op_name=stage.name, new_boundary_name=stage.name,
+                                          coordinates=tuple(stage.coordinates))
             self.add_boundary_condition(name=bc_name, bc_type="FunctionDirichletBC", variable=pressure_variable,
                                         boundary_name=stage.name,
                                         params={"function": stage.pressure_function_name or pressure_function_name})
@@ -1834,6 +1839,13 @@ class ModelBuilder:
         # Plot nodesets
         if 'nodesets' in self.geometry_info:
             for nodeset in self.geometry_info['nodesets']:
+                if 'bottom_left' in nodeset:  # bounding-box nodeset (a line/patch of nodes)
+                    bl, tr = nodeset['bottom_left'], nodeset['top_right']
+                    bl = [float(c) for c in bl.split()] if isinstance(bl, str) else bl
+                    tr = [float(c) for c in tr.split()] if isinstance(tr, str) else tr
+                    ax.plot([bl[0], tr[0], tr[0], bl[0], bl[0]], [bl[1], bl[1], tr[1], tr[1], bl[1]], '-',
+                            color='cyan', linewidth=3, label=f"Nodeset: {nodeset['name']}")
+                    continue
                 coords = nodeset['coordinates']
                 if isinstance(coords, str):
                     coords = [float(c) for c in coords.split()]

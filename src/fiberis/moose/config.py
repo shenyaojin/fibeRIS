@@ -433,24 +433,30 @@ class SimpleFluidPropertiesConfig:
 class InjectionStageConfig:
     """
     One injection stage (e.g., one perf stage) for ModelBuilder.add_staged_pressure_injection.
-    The pressure BC at `coordinates` is active only for start_time <= t < end_time.
+    The pressure BC is active only for start_time <= t < end_time. It acts on the single node at `coordinates`,
+    or on every node inside `bounding_box` when one is given (a line or patch, e.g. across a fracture/SRV thickness).
     """
     def __init__(self,
                  name: str,
                  coordinates: Tuple[float, float, float],
                  start_time: float,
                  end_time: float,
-                 pressure_function_name: Optional[str] = None):
+                 pressure_function_name: Optional[str] = None,
+                 bounding_box: Optional[Tuple[Tuple[float, ...], Tuple[float, ...]]] = None):
         """
         Initializes an InjectionStageConfig.
 
         Args:
             name (str): Stage name (e.g., "stage_22"). Used to name the nodeset, BC, and control. No spaces.
             coordinates (Tuple[float, float, float]): Injection point. Must coincide with a mesh node.
+                Ignored for the nodeset when `bounding_box` is given.
             start_time (float): Simulation time (s) when this stage's pressure BC switches on.
             end_time (float): Simulation time (s) when this stage's pressure BC switches off.
             pressure_function_name (Optional[str], optional): Function for this stage's pressure.
                 If None, the shared function passed to add_staged_pressure_injection is used.
+            bounding_box (Optional[Tuple]): (bottom_left, top_right) corners. If given, the BC is applied to all
+                nodes inside this box (BoundingBoxNodeSetGenerator) instead of the single node at `coordinates`.
+                Make the box slightly larger than the mesh nodes it should catch.
         """
         if end_time <= start_time:
             raise ValueError(f"Stage '{name}': end_time ({end_time}) must be greater than start_time ({start_time}).")
@@ -459,6 +465,7 @@ class InjectionStageConfig:
         self.start_time: float = start_time
         self.end_time: float = end_time
         self.pressure_function_name: Optional[str] = pressure_function_name
+        self.bounding_box = bounding_box
 
 # Adaptive time-stepping configuration
 class TimeStepperFunctionConfig(Data1D):
